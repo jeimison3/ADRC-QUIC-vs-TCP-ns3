@@ -576,7 +576,7 @@ int main(int argc, char* argv[])
   std::string tcpVariant = "TcpNewReno";
   std::string serverBandwidth = "100Mbps";
   std::string serverDelay = "5ms";
-  std::string bottleneckBandwidth = "10Mbps";
+  std::string bottleneckBandwidth = "1Gbps";
   std::string bottleneckDelay = "20ms";
   double bottleneckErrorRate = 0.0;
   std::string accessBandwidth = "100Mbps";
@@ -600,6 +600,7 @@ int main(int argc, char* argv[])
   bool enableBackground = false;
   uint32_t numBgNodes = 2;
   std::string bgRate = "2Mbps";
+  std::string bgTotalRate;    // total background rate (overrides bgRate — divides by numBgNodes)
 
   bool flowMonitor = true;
   bool pcap = false;
@@ -653,7 +654,8 @@ int main(int argc, char* argv[])
   cmd.AddValue("background", "Enable background cross-traffic (0/1)",
                enableBackground);
   cmd.AddValue("numBgNodes", "Number of background nodes", numBgNodes);
-  cmd.AddValue("bgRate", "Background traffic rate per node", bgRate);
+  cmd.AddValue("bgRate", "Background traffic rate per node (ignored if --bgTotalRate is set)", bgRate);
+  cmd.AddValue("bgTotalRate", "Total background traffic rate (divided by numBgNodes)", bgTotalRate);
 
   // Control
   cmd.AddValue("duration", "Simulation duration in seconds", simulationTime);
@@ -670,6 +672,17 @@ int main(int argc, char* argv[])
   cmd.AddValue("verboseConn", "Enable per-connection logging (0/1)", g_verboseConn);
 
   cmd.Parse(argc, argv);
+
+  // If bgTotalRate is set, compute per-node bgRate from total
+  if (!bgTotalRate.empty())
+    {
+      DataRate totalBg(bgTotalRate);
+      uint32_t n = (numBgNodes > 0) ? numBgNodes : 1;
+      uint64_t perNodeBps = totalBg.GetBitRate() / n;
+      std::ostringstream oss;
+      oss << perNodeBps << "bps";
+      bgRate = oss.str();
+    }
 
   g_timeoutLimit = connectionTimeout;
   g_tcpTotal = numTcpClients * connPerClient;
@@ -768,7 +781,12 @@ int main(int argc, char* argv[])
   if (enableQuic) wifiStaNodes.Add(quicStaNodes);
 
   NodeContainer bgNodes;
-  if (enableBackground) bgNodes.Create(numBgNodes);
+  if (enableBackground)
+    {
+      bgNodes.Create(numBgNodes);
+      // If WiFi test, bgNodes join the WiFi network — contention is realistic
+      if (enableWifi) wifiStaNodes.Add(bgNodes);
+    }
 
   // -----------------------------------------------------------------------
   // Links
@@ -859,12 +877,16 @@ int main(int argc, char* argv[])
   address.SetBase("10.0.2.0", "255.255.255.0");
   address.Assign(devR2Ap);
 
-  for (uint32_t i = 0; i < bgNodes.GetN(); i++)
+  // Background nodes: WiFi or P2P depending on test mode
+  if (!enableWifi)
     {
-      NetDeviceContainer dev = accessLink.Install(router2, bgNodes.Get(i));
-      tch.Install(dev);
-      address.SetBase(("10.12." + std::to_string(i) + ".0").c_str(), "255.255.255.0");
-      address.Assign(dev);
+      for (uint32_t i = 0; i < bgNodes.GetN(); i++)
+        {
+          NetDeviceContainer dev = accessLink.Install(router2, bgNodes.Get(i));
+          tch.Install(dev);
+          address.SetBase(("10.12." + std::to_string(i) + ".0").c_str(), "255.255.255.0");
+          address.Assign(dev);
+        }
     }
 
   // =======================================================================

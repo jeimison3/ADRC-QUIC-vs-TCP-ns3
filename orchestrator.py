@@ -26,15 +26,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # CONSTANTES MODIFICÁVEIS
 # ===========================================================================
 
-DURACAO = 30
+DURACAO = 20
 TLS_PAYLOAD = 3000
 CONN_PER_CLIENT = 1   # ⚠ QUIC: manter =1 (bug 0-RTT no ns-3.47)
 CONN_INTERVAL = 0.5
-CONN_TIMEOUT = 15
-UDP_BG_RATE_FRAC = 0.3
+CONN_TIMEOUT = 5
+BG_TOTAL_RATE = "800Mbps"   # largura total de fundo (dividida entre numBgNodes)
+ACCESS_BW = "100Mbps"      # enlace de acesso dos clientes (Ethernet)
+BOTTLENECK_BW = "1Gbps"    # gargalo
 SERV_DELAY = "5ms"
 ACCESS_DELAY = "2ms"
-GARGALO_DELAY = "20ms"
+GARGALO_DELAY = "30ms"
 WIFI_STANDARD = "80211ac"
 WIFI_RATE = "VhtMcs7"
 WIFI_DISTANCE = 20
@@ -44,7 +46,6 @@ WIFI_DISTANCE = 20
 # ===========================================================================
 
 LINK_TECH = ["Ethernet", "WiFi5GHz"]
-RATES = ["30Mbps", "100Mbps"]
 LOSSES = ["0", "0.03", "0.15"]
 PROTOCOLS = ["QUIC", "TCP-TLS"]
 ACTIVE_CLIENTS = ["5", "45"]
@@ -57,24 +58,15 @@ BG_CLIENTS = ["30", "100", "240"]
 NS3_DIR = Path(__file__).resolve().parent.parent
 
 
-def compute_bg_rate(total_bw: str, bg_count: str) -> str:
-    bw = int(total_bw.replace("Mbps", "").replace("Gbps", ""))
-    n = int(bg_count)
-    if n == 0:
-        return "0.1Mbps"
-    per_node = max(0.1, (bw * UDP_BG_RATE_FRAC) / n)
-    return f"{per_node:.2f}Mbps"
-
-
-def build_output_dir(link_tech: str, rate: str, loss: str,
+def build_output_dir(link_tech: str, loss: str,
                      protocol: str, active: str, bg: str) -> str:
     base = Path(__file__).resolve().parent / "RESULTADOS"
-    subdir = f"{link_tech}/{rate}/perda-{loss}/{protocol}/clientes-{active}/fundo-{bg}"
+    subdir = f"{link_tech}/perda-{loss}/{protocol}/clientes-{active}/fundo-{bg}"
     return str(base / subdir)
 
 
 def build_ns3_args(output_dir: str,
-                   link_tech: str, rate: str, loss: str,
+                   link_tech: str, loss: str,
                    protocol: str, active: str, bg: str) -> list[str]:
     args = ["./ns3", "run", "connection-success"]
     sim_args = [
@@ -82,10 +74,11 @@ def build_ns3_args(output_dir: str,
         f"--connPerClient={CONN_PER_CLIENT}",
         f"--connInterval={CONN_INTERVAL}",
         f"--connTimeout={CONN_TIMEOUT}",
-        f"--bottleneckBw={rate}",
+        f"--bottleneckBw={BOTTLENECK_BW}",
         f"--bottleneckDelay={GARGALO_DELAY}",
         f"--bottleneckError={loss}",
         f"--serverDelay={SERV_DELAY}",
+        f"--accessBw={ACCESS_BW}",
         f"--accessDelay={ACCESS_DELAY}",
         f"--outputDir={output_dir}",
     ]
@@ -98,14 +91,14 @@ def build_ns3_args(output_dir: str,
             f"--wifiRate={WIFI_RATE}",
             f"--wifiDistance={WIFI_DISTANCE}",
         ])
-    bg_rate = compute_bg_rate(rate, bg)
     if "QUIC" in protocol:
         sim_args.extend(["--enableQuic=1", f"--numQuicClients={active}",
                          "--numTcpClients=0", "--tlsPayloadSize=0"])
     else:
         sim_args.extend(["--enableQuic=0", f"--numTcpClients={active}",
                          "--numQuicClients=0", f"--tlsPayloadSize={TLS_PAYLOAD}"])
-    sim_args.extend(["--background=1", f"--numBgNodes={bg}", f"--bgRate={bg_rate}"])
+    sim_args.extend(["--background=1", f"--numBgNodes={bg}",
+                     f"--bgTotalRate={BG_TOTAL_RATE}"])
     args.append("--")
     args.extend(sim_args)
     return args
@@ -137,11 +130,11 @@ def executa_experimento(comando: list[str], output_dir: str):
         return False, output_dir
 
 
-def descricao_experimento(link: str, rate: str, loss: str,
+def descricao_experimento(link: str, loss: str,
                           proto: str, active: str, bg: str, idx: int, total: int) -> str:
     loss_pct = float(loss) * 100
     return (f"[{idx+1:{len(str(total))}}/{total}] "
-            f"{link:10s} {rate:>7s} perda={loss_pct:3.0f}% "
+            f"{link:10s} perda={loss_pct:3.0f}% "
             f"{proto:7s} clientes={active:>2s} fundo={bg:>3s}")
 
 
@@ -179,32 +172,32 @@ def main():
     if n_parallel * MEM_WARN > 8:
         print(f"⚠  {n_parallel} paralelos ~{n_parallel * MEM_WARN:.0f} GB de RAM (est.)")
 
-    # Gera combinações
+    # Gera combinações (gargalo fixo em BOTTLENECK_BW, acesso fixo em ACCESS_BW)
     combos = list(itertools.product(
-        LINK_TECH, RATES, LOSSES, PROTOCOLS, ACTIVE_CLIENTS, BG_CLIENTS
+        LINK_TECH, LOSSES, PROTOCOLS, ACTIVE_CLIENTS, BG_CLIENTS
     ))
     total = len(combos)
 
     print(f"\n{'='*60}")
     print(f"  Orquestrador Paralelo de Experimentos")
-    print(f"  {total} experimentos")
+    print(f"  {total} experimentos  (gargalo={BOTTLENECK_BW}, acesso={ACCESS_BW})")
     print(f"  Paralelismo: {n_parallel} simulações simultâneas ({n_cpus} CPUs)")
     print(f"  Duração: {DURACAO}s simulados por experimento")
-    print(f"  Dirs: {len(LINK_TECH)}×{len(RATES)}×{len(LOSSES)}×"
+    print(f"  Dirs: {len(LINK_TECH)}×{len(LOSSES)}×"
           f"{len(PROTOCOLS)}×{len(ACTIVE_CLIENTS)}×{len(BG_CLIENTS)} = "
           f"{total} combinações")
     print(f"{'='*60}\n")
 
     # Filtra e prepara experimentos
     fila = []
-    for idx, (link, rate, loss, proto, active, bg) in enumerate(combos):
+    for idx, (link, loss, proto, active, bg) in enumerate(combos):
         if idx < args.from_idx:
             continue
-        output_dir = build_output_dir(link, rate, loss, proto, active, bg)
+        output_dir = build_output_dir(link, loss, proto, active, bg)
         if args.resume and os.path.exists(os.path.join(output_dir, "summary.csv")):
             continue
-        comando = build_ns3_args(output_dir, link, rate, loss, proto, active, bg)
-        desc = descricao_experimento(link, rate, loss, proto, active, bg, idx, total)
+        comando = build_ns3_args(output_dir, link, loss, proto, active, bg)
+        desc = descricao_experimento(link, loss, proto, active, bg, idx, total)
         fila.append((comando, output_dir, desc))
 
     if not fila:

@@ -36,7 +36,6 @@ LARG = 0.32
 # ---------------------------------------------------------------------------
 RE_CAM = re.compile(
     r"(Ethernet|WiFi5GHz)"
-    r"/(\d+Mbps)"
     r"/perda-([\d.]+)"
     r"/(QUIC|TCP-TLS)"
     r"/clientes-(\d+)"
@@ -45,9 +44,9 @@ RE_CAM = re.compile(
 def extrai_cam(c):
     m = RE_CAM.search(c)
     if not m: return {}
-    return {"Tecnologia": m.group(1), "Banda": m.group(2),
-            "Perda": float(m.group(3)), "ProtocoloExp": m.group(4),
-            "ClientesAtivos": int(m.group(5)), "ClientesFundo": int(m.group(6))}
+    return {"Tecnologia": m.group(1),
+            "Perda": float(m.group(2)), "ProtocoloExp": m.group(3),
+            "ClientesAtivos": int(m.group(4)), "ClientesFundo": int(m.group(5))}
 
 PT_EN = {"Protocolo":"Protocol","TaxaSucesso":"TaxaSucesso",
          "LatenciaMediaMs":"LatenciaMediaMs","GargaloErro":"GargaloErro",
@@ -74,11 +73,13 @@ def carrega(dir_):
                         except: r[k]=0
                     exp=r.get("ProtocoloExp","")
                     # r["Protocol"] already set from CSV column via PT_EN mapping
-                    # DON'T overwrite — keep CSV value as ground truth
                     csvProto = r.get("Protocol","")
                     # Fix: "WiFi" column is string "0"/"1", both truthy
                     wifi_val = r.get("WiFi","0")
                     r["RotWiFi"]="WiFi" if int(float(wifi_val)) else "Ethernet"
+                    # Banda from CSV GargaloBw column (not from dir path anymore)
+                    bw = r.get("GargaloBw","")
+                    r["Banda"] = bw if bw else "?Mbps"
                     # Filter garbage rows: TCP=0/0 row in QUIC experiment folder
                     is_quic_exp = (exp == "QUIC")
                     is_tcp_exp = (exp == "TCP-TLS")
