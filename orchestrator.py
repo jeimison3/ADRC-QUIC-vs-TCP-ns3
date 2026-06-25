@@ -26,17 +26,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # CONSTANTES MODIFICÁVEIS
 # ===========================================================================
 
-DURACAO = 20
+DURACAO = 30
 TLS_PAYLOAD = 3000
 CONN_PER_CLIENT = 1   # ⚠ QUIC: manter =1 (bug 0-RTT no ns-3.47)
 CONN_INTERVAL = 0.5
-CONN_TIMEOUT = 5
-BG_TOTAL_RATE = "800Mbps"   # largura total de fundo (dividida entre numBgNodes)
+CONN_TIMEOUT = 15
+BG_TOTAL_RATE = "500Mbps"   # largura total de fundo (dividida entre numBgNodes)
 ACCESS_BW = "100Mbps"      # enlace de acesso dos clientes (Ethernet)
 BOTTLENECK_BW = "1Gbps"    # gargalo
 SERV_DELAY = "5ms"
 ACCESS_DELAY = "2ms"
-GARGALO_DELAY = "30ms"
+GARGALO_DELAY = "20ms"
 WIFI_STANDARD = "80211ac"
 WIFI_RATE = "VhtMcs7"
 WIFI_DISTANCE = 20
