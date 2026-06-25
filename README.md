@@ -84,9 +84,26 @@ Comparação de desempenho entre **TCP e UDP** em uma topologia mista cabeada/se
 
 ## Saídas geradas
 
+### `tcp-udp-comparison.cc`
 - **Terminal**: throughput agregado TCP/UDP e por fluxo individual
 - **CSV**: `<prefix>-r<N>-flows.csv` — estatísticas por fluxo (bytes, pacotes, perdas, atraso)
 - **XML**: `<prefix>-r<N>.flowmonitor` — dados completos do FlowMonitor
+
+### `connection-success.cc`
+- **`summary.csv`**: uma linha por protocolo (TCP/UDP/QUIC) com todos os parâmetros e métricas agregadas — ideal para `pandas.read_csv()` e plotagem
+- **`connections.csv`**: resultado por conexão individual (tempo de início, latência de handshake, sucesso, motivo de falha)
+- **`flows.csv`**: dados por fluxo do FlowMonitor (igual ao `tcp-udp-comparison`)
+- **`flows.flowmonitor`**: XML completo do FlowMonitor
+
+Todos os arquivos são salvos no diretório configurado por `--outputDir`.
+Se não especificado, é gerado automaticamente como `scratch/RESULTADOS/EXEC-<timestamp>/`.
+
+**Exemplo de pós-processamento com Python:**
+```python
+import pandas as pd
+df = pd.read_csv("scratch/RESULTADOS/EXEC-2026-06-24-21-00-00/summary.csv")
+print(df.groupby("Protocol")[["SuccessRate", "AvgLatencyMs"]].mean())
+```
 
 ## Compilar e executar
 
@@ -97,9 +114,15 @@ cd /home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47
 
 # Compilar apenas um script
 ./ns3 build scratch/tcp-udp-comparison.cc
+./ns3 build scratch/connection-success.cc
 
 # Executar
 ./ns3 run "tcp-udp-comparison --duration=30"
+./ns3 run "connection-success --numTcpClients=3 --connPerClient=10 --outputDir=meu-teste"
+
+# Múltiplas execuções (cada uma adiciona uma linha ao summary.csv)
+./ns3 run "connection-success --run=0 --outputDir=cenario1"
+./ns3 run "connection-success --run=1 --outputDir=cenario1"
 ```
 
 ## Estrutura do diretório
@@ -108,10 +131,18 @@ cd /home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47
 scratch/
 ├── AGENTS.md                  # Instruções para agentes de IA
 ├── README.md                  # Este arquivo
+├── CENARIOS.md                # 13 cenários de teste com níveis 1/2/3
 ├── CMakeLists.txt             # Configuração de build automática
-├── tcp-udp-comparison.cc      # Script principal TCP vs UDP
+├── tcp-udp-comparison.cc      # Script TCP vs UDP (vazão)
+├── connection-success.cc      # Script de taxa de sucesso de conexão
 ├── quic-wifi.cc               # Exemplo QUIC + WiFi
 ├── scratch-simulator.cc       # Exemplo padrão ns-3
+├── RESULTADOS/                # Resultados de experimentos (auto-criado)
+│   └── EXEC-<timestamp>/      # Um diretório por execução
+│       ├── summary.csv
+│       ├── connections.csv
+│       ├── flows.csv
+│       └── flows.flowmonitor
 ├── subdir/                    # Exemplos em subdiretório
 ├── nested-subdir/             # Exemplos aninhados
 └── tcpudp/                    # Dados de saída de simulações

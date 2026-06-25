@@ -1,37 +1,80 @@
 # Cenários de Teste — TCP vs UDP vs QUIC
 
-Este documento define **10+ cenários** para comparar desempenho de TCP, UDP e QUIC
+Este documento define **13 cenários** para comparar desempenho de TCP, UDP e QUIC
 quanto a **taxa de sucesso de conexão**, **latência de handshake** e **vazão**.
 
 Cada cenário tem **3 níveis de intensidade** (1 = leve, 2 = moderado, 3 = extremo)
 para escalar gradualmente as condições adversas.
 
-Abreviações usadas nos comandos:
+## Parâmetros principais
 
-| Flag curta | Flag longa | Padrão |
+| Parâmetro | Padrão | Descrição |
 |---|---|---|
-| `-cT` | `--numTcpClients` | 2 |
-| `-cU` | `--numUdpClients` | 1 |
-| `-cQ` | `--numQuicClients` | 0 |
-| `-n` | `--connPerClient` | 5 |
-| `-i` | `--connInterval` | 0.5 s |
-| `-to` | `--connTimeout` | 10 s |
-| `-e` | `--bottleneckError` | 0.0 |
-| `-bB` | `--bottleneckBw` | 10 Mbps |
-| `-bD` | `--bottleneckDelay` | 20 ms |
-| `-sB` | `--serverBw` | 100 Mbps |
-| `-sD` | `--serverDelay` | 5 ms |
-| `-aB` | `--accessBw` | 100 Mbps |
-| `-aD` | `--accessDelay` | 2 ms |
-| `-d` | `--duration` | 30 s |
-| `-v` | `--tcpVariant` | TcpNewReno |
-| `-wS` | `--wifiStandard` | 80211ac |
-| `-wR` | `--wifiRate` | VhtMcs7 |
-| `-bg` | `--background` | 0 |
-| `-bgn` | `--numBgNodes` | 2 |
-| `-bgr` | `--bgRate` | 2 Mbps |
-| `-q` | `--queueDisc` | PfifoFastQueueDisc |
-| `-p` | `--prefix` | conn-success |
+| `--numTcpClients` | 2 | Número de nós clientes TCP |
+| `--numUdpClients` | 2 | Número de nós clientes UDP |
+| `--numQuicClients` | 0 | Número de nós clientes QUIC |
+| `--connPerClient` | 5 | Conexões TCP por cliente |
+| `--connInterval` | 0.5 | Intervalo entre conexões (s) |
+| `--connTimeout` | 10 | Timeout de handshake (s) |
+| `--bottleneckBw` | 10Mbps | Largura de banda do gargalo |
+| `--bottleneckDelay` | 20ms | Latência do gargalo |
+| `--bottleneckError` | 0.0 | Taxa de erro no gargalo (0–1) |
+| `--serverBw` | 100Mbps | Banda do link do servidor |
+| `--serverDelay` | 5ms | Latência do link do servidor |
+| `--accessBw` | 100Mbps | Banda dos links de acesso |
+| `--accessDelay` | 2ms | Latência dos links de acesso |
+| `--duration` | 60 | Duração da simulação (s) |
+| `--tcpVariant` | TcpNewReno | Variante de controle de congestão |
+| `--wifiStandard` | 80211ac | Padrão WiFi (a/b/g/n/ac/ax) |
+| `--wifiRate` | VhtMcs7 | Taxa PHY WiFi |
+| `--enableWifi` | 1 | Habilita WiFi (0 = só cabeado) |
+| `--enableQuic` | 0 | Habilita testes QUIC |
+| `--background` | 0 | Habilita tráfego de fundo |
+| `--numBgNodes` | 2 | Nós de tráfego de fundo |
+| `--bgRate` | 2Mbps | Taxa de tráfego de fundo |
+| `--queueDisc` | PfifoFastQueueDisc | Disciplina de fila |
+| `--outputDir` | auto | Diretório de saída |
+| `--run` | 0 | Semente RNG |
+| `--verboseConn` | 0 | Log por conexão |
+
+## Formato de saída
+
+Cada execução gera um diretório com:
+
+```
+--outputDir/                      # ex: scratch/RESULTADOS/cenario1/
+├── summary.csv                   # 1 linha por protocolo (TCP/UDP/QUIC)
+│                                 #   com métricas agregadas + parâmetros
+├── connections.csv               # 1 linha por conexão individual
+├── flows.csv                     # FlowMonitor por fluxo
+└── flows.flowmonitor             # XML completo
+```
+
+**`summary.csv`** é o arquivo para pós-processamento:
+
+```
+Protocol,Successes,Attempts,SuccessRate,AvgLatencyMs,MinLatencyMs,MaxLatencyMs,
+BytesRx,PacketsRx,EstPacketsSent,DeliveryRate,0RTTFlows,
+TcpVariant,BottleneckBw,BottleneckDelay,BottleneckError,
+ServerBw,ServerDelay,AccessBw,AccessDelay,
+Wifi,WifiStandard,WifiRate,QueueDisc,Background,BgRate,BgNodes,
+NumClients,ConnPerClient,ConnInterval,ConnTimeout,Duration
+```
+
+Exemplo de análise com Python:
+```python
+import csv, glob, numpy as np
+
+rows = []
+for f in sorted(glob.glob("scratch/RESULTADOS/**/summary.csv", recursive=True)):
+    with open(f) as fh:
+        for r in csv.DictReader(fh):
+            r["SuccessRate"] = float(r.get("SuccessRate", 0))
+            rows.append(r)
+
+tcp = [r["SuccessRate"] for r in rows if r["Protocol"] == "TCP"]
+print(f"TCP success rate: {np.mean(tcp):.1f}% ±{np.std(tcp):.1f}%")
+```
 
 ---
 
@@ -41,19 +84,19 @@ Abreviações usadas nos comandos:
 e sem concorrência. Serve como referência para todos os outros cenários.
 
 **Hipótese:** TCP e QUIC devem ter 100% de sucesso. TCP pode ser ligeiramente mais
-rápido no handshake (3-way handshake é mais simples que TLS 1.3). UDP não tem handshake,
-então entrega é praticamente 100%.
+rápido no handshake (3-way é mais simples que TLS 1.3). UDP sem handshake,
+entrega ~100%.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=5 --duration=30 --prefix=base1"` | 5 Mbps bottleneck, sem perdas |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=3 --numQuicClients=5 --connPerClient=10 --duration=60 --bottleneckBw=100Mbps --prefix=base2"` | 100 Mbps, 10 conexões por cliente |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=10 --numUdpClients=5 --numQuicClients=10 --connPerClient=20 --duration=120 --bottleneckBw=1Gbps --prefix=base3"` | 1 Gbps, 20 conexões por cliente |
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=5 --duration=30 --outputDir=baseline/nivel1"` | Sem perdas |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=3 --numQuicClients=5 --connPerClient=10 --duration=60 --bottleneckBw=100Mbps --outputDir=baseline/nivel2"` | 100 Mbps, 10 conexões/cliente |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=10 --numUdpClients=5 --numQuicClients=10 --connPerClient=20 --duration=120 --bottleneckBw=1Gbps --outputDir=baseline/nivel3"` | 1 Gbps, 20 conexões/cliente |
 
 **Métricas esperadas:**
 - Sucesso TCP/QUIC: 100%
 - Handshake TCP: ~50–60 ms (WiFi + enlaces P2P)
-- Handshake QUIC: ~55–70 ms (TLS 1.3 incluso no handshake)
+- Handshake QUIC: ~55–70 ms (TLS 1.3 incluso)
 - Entrega UDP: ~99–100%
 
 ---
@@ -61,357 +104,257 @@ então entrega é praticamente 100%.
 ## Cenário 2: Perda de Pacotes (Packet Loss)
 
 **O que compara:** Resiliência dos protocolos a perdas no enlace gargalo.
-TCP depende de ACKs para estabelecer conexão; QUIC usa mecanismos similares com
-menos overhead. Perdas testam retransmissão no handshake.
+TCP depende de ACKs; QUIC usa mecanismos similares com menos overhead.
+Perdas testam retransmissão no handshake.
 
-**Hipótese:** TCP degrada mais rápido que QUIC. Perdas acima de 5% devem começar
-a impactar visivelmente a taxa de sucesso. UDP não tem handshake, mas perde pacotes,
-reduzindo a taxa de entrega.
+**Hipótese:** TCP degrada mais rápido que QUIC sob perda > 5%. UDP não tem
+handshake, mas perde pacotes de dados.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.01 --duration=60 --prefix=loss1"` | 1% de perda |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.05 --duration=60 --prefix=loss2"` | 5% de perda |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.10 --duration=60 --connTimeout=15 --prefix=loss3"` | 10% de perda |
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.01 --duration=60 --outputDir=packetloss/nivel1"` | 1% de perda |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.05 --duration=60 --outputDir=packetloss/nivel2"` | 5% de perda |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.10 --duration=60 --connTimeout=15 --outputDir=packetloss/nivel3"` | 10% de perda |
 
 **Métricas esperadas:**
-- Loss 1%: TCP próximo de 100%, QUIC próximo de 100%
-- Loss 5%: TCP cai para 80–95%, QUIC mantém 90–100%
-- Loss 10%: TCP cai para 50–70%, QUIC cai para 70–90%
-- Latência de handshake aumenta com perda (retransmissões)
-- Entrega UDP: 99%/95%/90% aproximadamente
+- Loss 1%: TCP 100%, QUIC 100%
+- Loss 5%: TCP 80–95%, QUIC 90–100%
+- Loss 10%: TCP 50–70%, QUIC 70–90%
+- Latência de handshake aumenta com perda
+- Entrega UDP: ~99% / 95% / 90%
 
 ---
 
 ## Cenário 3: Alta Latência (Longa Distância)
 
-**O que compara:** Impacto da latência de rede (RTT elevado) no estabelecimento de
-conexões. Simula links satélite (500+ ms) ou transcontinentais (100–300 ms).
+**O que compara:** Impacto da latência (RTT elevado) no handshake.
+Simula links satélite (500+ ms) ou transcontinentais (100–300 ms).
 
-**Hipótese:** TCP tem handshake de 3 vias (1.5 RTT para SYN → SYN+ACK → ACK);
-QUIC tem 1-RTT handshake (TLS 1.3 otimizado). Handshakes QUIC devem ser mais
-rápidos em altas latências. UDP continua sem handshake, mas o atraso afeta a
-entrega de datagramas.
+**Hipótese:** TCP 3-way handshake = 1.5 RTT. QUIC handshake = 1 RTT (TLS 1.3 otimizado).
+QUIC deve ser mais rápido sob alta latência.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=50ms --serverDelay=30ms --prefix=lat1 --connTimeout=20"` | RTT ~110 ms |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=150ms --serverDelay=50ms --prefix=lat2 --connTimeout=30"` | RTT ~410 ms |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=300ms --serverDelay=100ms --prefix=lat3 --connTimeout=60"` | RTT ~810 ms |
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=50ms --serverDelay=30ms --outputDir=latency/nivel1 --connTimeout=20"` | RTT ~110 ms |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=150ms --serverDelay=50ms --outputDir=latency/nivel2 --connTimeout=30"` | RTT ~410 ms |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckDelay=300ms --serverDelay=100ms --outputDir=latency/nivel3 --connTimeout=60"` | RTT ~810 ms |
 
 **Métricas esperadas:**
-- Handshake TCP ~= 1.5× RTT (SYN → SYN+ACK → ACK)
-- Handshake QUIC ~= 1× RTT (TLS 1.3 handshake completo em 1 RTT)
-- Ambos com retransmissões se houver timeouts
-- Sucesso deve permanecer alto (>95%) se o timeout for configurado adequadamente
+- Handshake TCP ~= 1.5× RTT
+- Handshake QUIC ~= 1× RTT
+- Sucesso > 95% se timeout configurado adequadamente
 
 ---
 
 ## Cenário 4: Gargalo de Banda (Bandwidth Bottleneck)
 
-**O que compara:** Como a largura de banda limitada afeta múltiplas conexões
-concorrentes. TCP com controle de congestionamento vs. UDP sem controle vs. QUIC
-com controle similar ao TCP.
+**O que compara:** Como largura de banda limitada afeta múltiplas conexões
+concorrentes. TCP com controle de congestionamento vs. UDP sem controle.
 
-**Hipótese:** Em banda baixa, múltiplas conexões TCP competem e o slow start
-pode causar perdas. Conexões TCP curtas (handshake + dados) podem sofrer com
-slow start incompleto. QUIC tem multiplexação de streams que pode ajudar.
+**Hipótese:** Em banda baixa, conexões TCP competem pelo slow start.
+Conexões curtas sofrem com slow start incompleto.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=2 --numQuicClients=3 --connPerClient=5 --bottleneckBw=50Mbps --duration=30 --prefix=bw1"` | 50 Mbps gargalo |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=3 --numQuicClients=5 --connPerClient=10 --bottleneckBw=5Mbps --duration=60 --prefix=bw2"` | 5 Mbps gargalo |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=10 --numUdpClients=5 --numQuicClients=10 --connPerClient=15 --bottleneckBw=1Mbps --duration=90 --connInterval=1.0 --prefix=bw3` | 1 Mbps gargalo, 1s entre tentativas |
-
-**Métricas esperadas:**
-- Em 1 Mbps: fila enche, perdas por overflow. TCP tem backoff excessivo.
-- QUIC pode ter melhor desempenho com multiplexação.
-- UDP sature a fila e afeta todos os fluxos.
-- Sucesso pode cair drasticamente no nível 3 (congestionamento extremo).
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=2 --numQuicClients=3 --connPerClient=5 --bottleneckBw=50Mbps --duration=30 --outputDir=bottleneck/nivel1"` | 50 Mbps |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=3 --numQuicClients=5 --connPerClient=10 --bottleneckBw=5Mbps --duration=60 --outputDir=bottleneck/nivel2"` | 5 Mbps |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=10 --numUdpClients=5 --numQuicClients=10 --connPerClient=15 --bottleneckBw=1Mbps --duration=90 --connInterval=1.0 --outputDir=bottleneck/nivel3"` | 1 Mbps |
 
 ---
 
 ## Cenário 5: Concorrência com Tráfego de Fundo (Background Traffic)
 
-**O que compara:** Degradação dos protocolos quando há tráfego cross-traffic
-competindo pelo mesmo gargalo. Simula cenário realista de rede compartilhada.
+**O que compara:** Degradação dos protocolos quando há tráfego competindo
+pelo mesmo gargalo. Simula rede compartilhada realista.
 
-**Hipótese:** TCP se adapta via controle de congestionamento (fairness). UDP
-não se adapta, causando unfairness e potencial colapso de congestionamento.
-QUIC tem controle similar ao TCP.
+**Hipótese:** TCP se adapta (fairness). UDP não se adapta, causando unfairness.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=1Mbps --numBgNodes=2 --prefix=bg1 --duration=60` | Fundo 1 Mbps × 2 nós = 2 Mbps |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=5Mbps --numBgNodes=2 --prefix=bg2 --duration=60` | Fundo 5 Mbps × 2 = 10 Mbps (satura) |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=5Mbps --numBgNodes=3 --prefix=bg3 --duration=60 --bottleneckDelay=50ms` | Fundo 5 Mbps × 3 = 15 Mbps + latência |
-
-**Métricas esperadas:**
-- Nível 1: queda pequena no sucesso (~95%+)
-- Nível 2 (saturação): perdas por overflow de fila, queda significativa no
-  sucesso TCP/QUIC. UDP perde menos conexões (não tem handshake) mas perde
-  pacotes de dados.
-- Nível 3: cenário extremo, poucas conexões TCP se estabelecem.
-- Identificar qual protocolo é mais resiliente sob congestão.
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=1Mbps --numBgNodes=2 --outputDir=background/nivel1 --duration=60"` | Fundo 1 Mbps × 2 nós |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=5Mbps --numBgNodes=2 --outputDir=background/nivel2 --duration=60"` | Fundo 5 Mbps × 2 = 10 Mbps (satura) |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=2 --numUdpClients=1 --numQuicClients=2 --connPerClient=10 --bottleneckBw=10Mbps --background=1 --bgRate=5Mbps --numBgNodes=3 --outputDir=background/nivel3 --duration=60 --bottleneckDelay=50ms"` | Fundo 15 Mbps + latência |
 
 ---
 
 ## Cenário 6: WiFi vs Cabeado
 
-**O que compara:** Desempenho de conexões via WiFi (acesso sem fio compartilhado)
-vs. enlace cabeado P2P dedicado. Simula clientes reais com acesso wireless.
+**O que compara:** Desempenho via WiFi (sem fio compartilhado) vs. enlace
+cabeado P2P dedicado.
 
-**Hipótese:** WiFi adiciona latência variável e perdas por contenção. Conexões
-curtas sofrem mais com overhead do WiFi (beacon, backoff, contenção).
+**Hipótese:** WiFi adiciona latência variável e perdas por contenção.
 
-**Comando base (WiFi, usar com --prefix=wifi):**
-```bash
-./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --numQuicClients=3 --connPerClient=10 --enableWifi=1 --wifiStandard=80211ac --wifiRate=VhtMcs5 --duration=60 --enableQuic=1 --prefix=wifi"
-```
-
-**Comando base (Cabeado, usar com --prefix=wired):**
-```bash
-./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --enableWifi=0 --duration=60 --prefix=wired"
-```
-
-| Nível | Condições |
-|---|---|
-| **1** | 1 cliente TCP + 1 UDP, taxa de acesso 100 Mbps |
-| **2** | 5 clientes TCP + 2 UDP, taxa de acesso 50 Mbps |
-| **3** | 10 clientes TCP + 5 UDP, taxa de acesso 10 Mbps, WiFi 80211g |
-
-Nível 3 802.11g é particularmente lento comparado a 802.11ac (VHT).
-Para testar o impacto do padrão WiFi:
-```bash
-./ns3 run "connection-success --numTcpClients=5 --numUdpClients=3 --connPerClient=10 --enableWifi=1 --wifiStandard=80211g --wifiRate=ErpOfdmRate54Mbps --prefix=wifi-2.4 --duration=60 --enableQuic=1 --numQuicClients=3"
-```
-
-**Métricas esperadas:**
-- WiFi adiciona 5–20 ms extra no handshake vs cabeado.
-- Sucesso WiFi < cabeado sob congestão (controle de acesso ao meio).
-- 802.11g (2.4 GHz) pior que 802.11ac (5 GHz).
+| Nível | Comando | Condições |
+|---|---|---|
+| **WiFi** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=2 --numQuicClients=3 --connPerClient=10 --wifiStandard=80211ac --wifiRate=VhtMcs5 --duration=60 --outputDir=wifi-vs-wired/wifi"` | 802.11ac |
+| **Cabeado** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=2 --numQuicClients=3 --connPerClient=10 --enableWifi=0 --duration=60 --outputDir=wifi-vs-wired/wired"` | P2P apenas |
+| **WiFi 2.4** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=3 --numQuicClients=3 --connPerClient=10 --wifiStandard=80211g --wifiRate=ErpOfdmRate54Mbps --duration=60 --outputDir=wifi-vs-wired/wifi-2.4"` | 802.11g (2.4 GHz) |
 
 ---
 
 ## Cenário 7: Variantes TCP (TcpNewReno vs TcpBbr vs TcpCubic vs TcpVegas)
 
-**O que compara:** Diferentes algoritmos de controle de congestionamento TCP
-no estabelecimento e throughput de conexões curtas. BBR é baseado em modelo,
-Cubic/NewReno em perda, Vegas em atraso.
+**O que compara:** Diferentes algoritmos de controle de congestionamento no
+handshake e desempenho de conexões curtas.
 
-**Hipótese:** BBR pode ter handshake mais rápido por não precisar de perdas para
-crescimento de cWnd. Vegas pode sofrer em handshakes longos (perda de sensibilidade
-RTT). Cubic e NewReno similares.
+**Hipótese:** BBR pode ter handshake mais rápido (modelo, não depende de perda).
+Vegas sofre com RTT alto.
 
-| Nível | Comando | Variante |
-|---|---|---|
-| **1** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpNewReno --prefix=tcp-newreno --duration=60"` | TcpNewReno |
-| **2** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpBbr --prefix=tcp-bbr --duration=60"` | TcpBbr |
-| **3** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpVegas --prefix=tcp-vegas --duration=60"` | TcpVegas |
+| Comando | Variante |
+|---|---|
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpNewReno --duration=60 --outputDir=tcp-variants/newreno"` | TcpNewReno |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpBbr --duration=60 --outputDir=tcp-variants/bbr"` | TcpBbr |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpCubic --duration=60 --outputDir=tcp-variants/cubic"` | TcpCubic |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=1 --connPerClient=10 --tcpVariant=TcpVegas --duration=60 --outputDir=tcp-variants/vegas"` | TcpVegas |
 
-Testar com 5% de perda para ver diferenças:
+**Teste extra — sob 5% de perda:**
 ```bash
-# BBR vs NewReno sob perda
-./ns3 run "connection-success --numTcpClients=3 --connPerClient=10 --tcpVariant=TcpBbr --bottleneckError=0.05 --prefix=bbr-loss --duration=60"
-./ns3 run "connection-success --numTcpClients=3 --connPerClient=10 --tcpVariant=TcpNewReno --bottleneckError=0.05 --prefix=newreno-loss --duration=60"
+./ns3 run "connection-success --numTcpClients=3 --connPerClient=10 --tcpVariant=TcpBbr --bottleneckError=0.05 --duration=60 --outputDir=tcp-variants/bbr-loss"
+./ns3 run "connection-success --numTcpClients=3 --connPerClient=10 --tcpVariant=TcpNewReno --bottleneckError=0.05 --duration=60 --outputDir=tcp-variants/newreno-loss"
 ```
-
-**Métricas esperadas:**
-- TcpNewReno: padrão, justo, mas conservador sob perda.
-- TcpBbr: melhor throughput sob perda (não reage linearmente a perdas).
-- TcpVegas: handshakes lentos com RTT alto (depende de RTT estável).
 
 ---
 
 ## Cenário 8: Escalonamento (Número de Conexões)
 
 **O que compara:** Como a taxa de sucesso escala com o número de conexões
-concorrentes. Testa capacidade de lidar com muitos handshakes simultâneos.
+concorrentes.
 
-**Hipótese:** A partir de certo número, filas e buffers no roteador saturam,
-causando perdas de SYN/INITIAL e timeouts.
+**Hipótese:** A partir de certo número, filas saturam, causando perdas de
+SYN/INITIAL e timeouts.
 
 | Nível | Comando | Conexões totais |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numQuicClients=5 --connPerClient=5 --connInterval=0.1 --bottleneckBw=100Mbps --duration=30 --prefix=scale1"` | 50 |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=20 --numQuicClients=20 --connPerClient=10 --connInterval=0.05 --bottleneckBw=100Mbps --duration=60 --prefix=scale2` | 400 |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=50 --numQuicClients=50 --connPerClient=20 --connInterval=0.02 --bottleneckBw=1Gbps --duration=120 --connTimeout=20 --prefix=scale3` | 2000 |
-
-**Métricas esperadas:**
-- Nível 1: 100% sucesso.
-- Nível 2: pequena degradação (alguns timeouts).
-- Nível 3: degradação perceptível, especialmente para QUIC (mais overhead
-  por conexão em termos de estado). Taxa de sucesso TCP pode cair para 70–90%.
-- O gargalo não é apenas banda, mas também processamento de pacotes (espera
-  na fila do roteador).
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numQuicClients=5 --connPerClient=5 --connInterval=0.1 --bottleneckBw=100Mbps --duration=30 --outputDir=scaling/nivel1"` | 50 |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=20 --numQuicClients=20 --connPerClient=10 --connInterval=0.05 --bottleneckBw=100Mbps --duration=60 --outputDir=scaling/nivel2"` | 400 |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=50 --numQuicClients=50 --connPerClient=20 --connInterval=0.02 --bottleneckBw=1Gbps --duration=120 --connTimeout=20 --outputDir=scaling/nivel3"` | 2000 |
 
 ---
 
 ## Cenário 9: Disciplinas de Fila (PfifoFast vs CoDel)
 
-**O que compara:** Efeito do gerenciamento ativo de filas (AQM) vs. drop-tail
-simples. CoDel controla o tamanho da fila ativamente para reduzir bufferbloat.
+**O que compara:** Efeito de AQM (CoDel) vs. drop-tail (PfifoFast).
+CoDel controla a fila ativamente para reduzir bufferbloat.
 
-**Hipótese:** CoDel deve reduzir latência de handshake quando há congestão,
-mantendo filas mais curtas. PfifoFast permite que filas cresçam, aumentando
-latência e potencialmente causando timeouts.
+**Hipótese:** CoDel reduz latência de handshake sob congestão. Porém, pode
+descartar prematuramente pacotes de handshake.
 
-| Nível | Comando | Disciplina |
-|---|---|---|
-| **1** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --bottleneckBw=5Mbps --background=1 --bgRate=3Mbps --numBgNodes=2 --queueDisc=ns3::PfifoFastQueueDisc --prefix=pfifo1 --duration=60"` | PfifoFast |
-| **2** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --bottleneckBw=5Mbps --background=1 --bgRate=3Mbps --numBgNodes=2 --queueDisc=ns3::CoDelQueueDisc --prefix=codel1 --duration=60"` | CoDel |
-
-**Comparação direta:**
-| Nível | PfifoFast | CoDel |
-|---|---|---|
-| **1** | `./ns3 run "connection-success ... --prefix=pfifo --queueDisc=ns3::PfifoFastQueueDisc ..."` | `./ns3 run "connection-success ... --prefix=codel --queueDisc=ns3::CoDelQueueDisc ..."` |
-| **2** (com congestão) | igual nível 1 + `--background=1 --bgRate=5Mbps` | igual nível 1 + mesma congestão |
-| **3** (congestão + latência) | igual nível 2 + `--bottleneckDelay=50ms` | igual nível 2 + mesma latência |
-
-**Métricas esperadas:**
-- PfifoFast: fila cresce, latência de handshake alta sob congestão.
-- CoDel: fila controlada, latência de handshake menor. Pode ter mais perdas
-  no curto prazo (dropping precoce) mas recuperação mais rápida.
-- Para conexões curtas (handshake + dados), CoDel pode ser pior que PfifoFast
-  (descarta prematuramente pacotes de handshake). O cenário testa exatamente isso.
+| Comando | Disciplina |
+|---|---|
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --bottleneckBw=5Mbps --background=1 --bgRate=3Mbps --numBgNodes=2 --queueDisc=ns3::PfifoFastQueueDisc --duration=60 --outputDir=queue/pfifo"` | PfifoFast |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --bottleneckBw=5Mbps --background=1 --bgRate=3Mbps --numBgNodes=2 --queueDisc=ns3::CoDelQueueDisc --duration=60 --outputDir=queue/codel"` | CoDel |
 
 ---
 
-## Cenário 10: Rácio da Proporção de Conexões (TCP vs UDP vs QUIC)
+## Cenário 10: Proporção de Conexões (TCP vs UDP vs QUIC)
 
-**O que compara:** Fairness entre protocolos quando diferentes proporções de
-TCP/UDP/QUIC competem. Simula cenários realistas com diferentes tipos de tráfego.
+**O que compara:** Fairness entre protocolos quando diferentes proporções
+competem.
 
-**Hipótese:** TCP e QUIC se comportam similarmente em termos de controle de
-congestionamento. UDP sem controle ocupa banda indiscriminadamente, afetando
-TCP e QUIC.
+**Hipótese:** TCP e QUIC são justos entre si. UDP sem controle ocupa banda
+indiscriminadamente.
 
-| Nível | Comando | Proporção |
-|---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=8 --numUdpClients=1 --numQuicClients=8 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --prefix=prop-8-1-8"` | TCP:UDP:QUIC = 8:1:8 |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=6 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --prefix=prop-3-6-3"` | 3:6:3 (UDP domina) |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=1 --numQuicClients=5 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --udpRate=10Mbps --prefix=prop-5-1-5"` | TCP/QUIC + UDP agressivo |
-
-**Métricas esperadas:**
-- Nível 1: TCP e QUIC dividem banda justamente. UDP baixo.
-- Nível 2: UDP sature o link (6 × 1 Mbps = 6 Mbps em 10 Mbps), deixando
-  pouco para TCP e QUIC. Sucesso TCP/QUIC cai.
-- Nível 3: UDP com taxa igual ao bottleneck (10 Mbps) devora toda a banda.
-  TCP/QUIC praticamente não conseguem estabelecer conexões.
+| Comando | Proporção |
+|---|---|
+| `./ns3 run "connection-success --enableQuic=1 --numTcpClients=8 --numUdpClients=1 --numQuicClients=8 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --outputDir=proportion/8-1-8"` | 8:1:8 |
+| `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=6 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --outputDir=proportion/3-6-3"` | 3:6:3 (UDP domina) |
+| `./ns3 run "connection-success --enableQuic=1 --numTcpClients=5 --numUdpClients=1 --numQuicClients=5 --connPerClient=10 --bottleneckBw=10Mbps --duration=60 --udpRate=10Mbps --outputDir=proportion/5-1-5-aggr"` | UDP agressivo |
 
 ---
 
 ## Cenário 11: Handshake 0-RTT do QUIC
 
-**O que compara:** QUIC com 0-RTT (retomada de sessão) vs. QUIC full handshake
-vs. TCP. 0-RTT permite enviar dados imediatamente, sem esperar handshake.
+**O que compara:** QUIC com 0-RTT (retomada de sessão) vs. handshake completo.
 
-**Hipótese:** 0-RTT elimina o RTT de handshake, permitindo envio de dados
-quase instantâneo. Deve ser especialmente vantajoso em redes com alta latência.
+**Hipótese:** 0-RTT elimina o RTT de handshake. Vantagem dramática sob latência alta.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --ns3::QuicL4Protocol::0RTT-Handshake=1 --prefix=quic-0rtt1"` | 0-RTT ativado |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --bottleneckDelay=100ms --serverDelay=50ms --ns3::QuicL4Protocol::0RTT-Handshake=1 --prefix=quic-0rtt2 --connTimeout=30"` | 0-RTT + latência alta |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=60 --bottleneckDelay=100ms --bottleneckError=0.02 --ns3::QuicL4Protocol::0RTT-Handshake=1 --prefix=quic-0rtt3 --connTimeout=30"` | 0-RTT + perda + latência |
-
-**Métricas esperadas:**
-- QUIC 0-RTT deve ter latência de primeira transmissão próxima de 0.
-- Sob latência alta (nível 2 e 3), 0-RTT é dramaticamente mais rápido que TCP
-  e QUIC sem 0-RTT.
-- Sob perda (nível 3), 0-RTT pode falhar (dados rejeitados se as chaves de
-  sessão não forem aceitas), caindo para handshake completo.
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --ns3::QuicL4Protocol::0RTT-Handshake=1 --outputDir=quic-0rtt/nivel1"` | 0-RTT ativado |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --bottleneckDelay=100ms --serverDelay=50ms --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel2"` | 0-RTT + latência |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=60 --bottleneckDelay=100ms --bottleneckError=0.02 --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel3"` | 0-RTT + perda + latência |
 
 ---
 
-## Cenário 12: Perda Assimétrica (Burst Loss)
+## Cenário 12: Perda em Rajada (Burst Loss)
 
-**O que compara:** Efeito de rajadas de perda (bursts) vs perda uniforme.
-Rajadas simulam fading em WiFi ou congestionamento intermitente.
+**O que compara:** Rajadas de perda (bursts) vs perda uniforme.
 
-**Hipótese:** Perda em rajada é mais prejudicial para TCP (múltiplos segmentos
-perdidos em uma janela, causando RTO) do que para QUIC (que pode ter melhor
-recuperação com FEC ou retransmissão seletiva).
-
-**Nota:** O modelo `RateErrorModel` com `ERROR_UNIT_PACKET` distribui perdas
-uniformemente (Bernoulli). Para burst loss, seria necessário usar
-`BurstErrorModel`. Exemplo de burst:
+**Nota:** O modelo `RateErrorModel` padrão distribui perdas uniformemente (Bernoulli).
+Para burst, usar `BurstErrorModel`.
 
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.01 --duration=60 --prefix=uniform1"` | Perda uniforme 1% |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.01 --duration=60 --prefix=uniform2 --ns3::RateErrorModel::ErrorUnit=BURST"` | Perda em rajada |
-| **3** | adicionar `--bottleneckDelay=30ms` aos comandos acima para amplificar | |
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.01 --duration=60 --outputDir=burst/uniform"` | Perda uniforme 1% |
+| **2** | mesmo comando + flag de burst error model | Perda em rajada |
 
 ---
 
-## Cenário 13: Vários Standards WiFi
+## Cenário 13: Vários Standards WiFi (802.11n / ac / ax)
 
-**O que compara:** 802.11n vs 802.11ac vs 802.11ax (WiFi 4/5/6) em termos de
-latência de handshake e taxa de sucesso de conexão.
+**O que compara:** WiFi 4 vs 5 vs 6 em latência de handshake e taxa de sucesso.
 
-**Hipótese:** WiFi mais moderno (ax/HE) tem menor latência e maior capacidade,
-resultando em melhor taxa de sucesso e handshakes mais rápidos.
+**Hipótese:** WiFi mais moderno (ax) tem menor latência e maior capacidade.
 
-| Nível | Comando | Padrão / Taxa |
-|---|---|---|
-| **1** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --enableWifi=1 --wifiStandard=80211n --wifiRate=HtMcs7 --duration=60 --prefix=wifi-n"` | 802.11n HT MCS7 |
-| **2** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --enableWifi=1 --wifiStandard=80211ac --wifiRate=VhtMcs7 --duration=60 --prefix=wifi-ac"` | 802.11ac VHT MCS7 |
-| **3** | `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --enableWifi=1 --wifiStandard=80211ax --wifiRate=HeMcs7 --duration=60 --prefix=wifi-ax"` | 802.11ax HE MCS7 |
-
-**Métricas esperadas:**
-- 802.11ax (WiFi 6) deve ter melhor desempenho com múltiplas estações (OFDMA,
-  melhor controle de acesso ao meio).
-- 802.11ac (WiFi 5) bom para poucos clientes.
-- 802.11n (WiFi 4) degrada com múltiplos clientes concorrentes.
-- Diferenças devem se amplificar com `--numTcpClients=10`.
+| Comando | Padrão |
+|---|---|
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --wifiStandard=80211n --wifiRate=HtMcs7 --duration=60 --outputDir=wifi-standards/80211n"` | 802.11n (WiFi 4) |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --wifiStandard=80211ac --wifiRate=VhtMcs7 --duration=60 --outputDir=wifi-standards/80211ac"` | 802.11ac (WiFi 5) |
+| `./ns3 run "connection-success --numTcpClients=3 --numUdpClients=2 --connPerClient=10 --wifiStandard=80211ax --wifiRate=HeMcs7 --duration=60 --outputDir=wifi-standards/80211ax"` | 802.11ax (WiFi 6) |
 
 ---
 
 ## Como Executar em Lote
 
-Para automatizar a execução múltipla, salve os comandos de um cenário em
-um script shell:
+```bash
+#!/bin/bash
+# Cenário 2: Packet Loss — 3 níveis
+BASE="connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --duration=60"
+
+echo "=== Nível 1: 1% loss ==="
+./ns3 run "$BASE --bottleneckError=0.01 --outputDir=packetloss/nivel1"
+
+echo "=== Nível 2: 5% loss ==="
+./ns3 run "$BASE --bottleneckError=0.05 --outputDir=packetloss/nivel2"
+
+echo "=== Nível 3: 10% loss ==="
+./ns3 run "$BASE --bottleneckError=0.10 --connTimeout=15 --outputDir=packetloss/nivel3"
+```
+
+**Múltiplas execuções do mesmo cenário** (para variância estatística):
 
 ```bash
 #!/bin/bash
-# Cenário 2: Packet Loss (níveis 1, 2, 3)
-NAMES=("loss1" "loss2" "loss3")
-ERRORS=("0.01" "0.05" "0.10")
-for i in 0 1 2; do
-  echo "=== Executando ${NAMES[$i]} (loss ${ERRORS[$i]}) ==="
-  ./ns3 run "connection-success \
-    --enableQuic=1 \
-    --numTcpClients=3 \
-    --numUdpClients=1 \
-    --numQuicClients=3 \
-    --connPerClient=10 \
-    --bottleneckBw=10Mbps \
-    --bottleneckError=${ERRORS[$i]} \
-    --duration=60 \
-    --prefix=${NAMES[$i]}"
+DIR="packetloss/5pct-10runs"
+for r in $(seq 0 9); do
+  echo "=== Run $r/10 ==="
+  ./ns3 run "connection-success --enableQuic=1 --numTcpClients=3 --numUdpClients=1 \
+    --numQuicClients=3 --connPerClient=10 --bottleneckBw=10Mbps --bottleneckError=0.05 \
+    --duration=60 --run=$r --outputDir=$DIR"
 done
-echo "=== Todos concluídos ==="
+# Cada run adiciona 1 linha ao $DIR/summary.csv (append automático)
 ```
 
 ---
 
 ## Interpretação de Resultados
 
-Após executar cada cenário, analise:
+O `summary.csv` contém todas as métricas. Exemplo real:
 
-1. **`<prefix>-r0-flows.csv`** — FlowMonitor por fluxo:
-   - `LostPackets` / `TxPackets` = perda real
-   - `MeanDelay_s` = atraso médio
-   - `Throughput_Mbps` = vazão real
+```
+Protocol,Run,Successes,Attempts,SuccessRate,AvgLatencyMs,MinLatencyMs,MaxLatencyMs,...
+TCP,0,28,30,93.33,125.4,54.2,3054.3,...
+UDP,0,0,0,0.00,0.0,0.0,0.0,1185800,847,892,95.0,...
+QUIC,0,29,30,96.67,98.2,52.1,158.3,...
+```
 
-2. **Saída no terminal** — Taxa de sucesso e latência média:
-   ```
-   TCP   Attempts: 30, Success: 28 (93.3%), Avg handshake: 125.4 ms
-   UDP   Delivery rate: 87.3%
-   QUIC  Detected: 30, Success: 29 (96.7%), Avg handshake: 98.2 ms
-   ```
+**O que observar entre níveis:**
+- Queda na taxa de sucesso → limite do protocolo
+- Aumento na latência → retransmissões ou filas cheias
+- `0RTTFlows > 0` → QUIC usando caminho rápido
+- `MinLatencyMs` vs `MaxLatencyMs` → variabilidade do handshake
 
-3. **Comparações entre níveis** — Como as métricas mudam de nível 1 para 3:
-   - Queda na taxa de sucesso sugere limites do protocolo
-   - Aumento na latência sugere retransmissões ou filas cheias
+**Geração de gráficos:**
+```bash
+python3 plot-results.py -d scratch/RESULTADOS -o plots/
+```
