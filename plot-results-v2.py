@@ -117,12 +117,6 @@ def barras_agrupadas(dados, eixo_x, grupos, y_attr, nome_x, nome_y, titulo,
     vals_g = sorted(set(r[grupos] for r in dados if grupos in r),
                     key=lambda v: (isinstance(v,str), v))
 
-    # Prepara rótulos do eixo X
-    def rot_x(v):
-        if eixo_x=="Perda": return f"{float(v)*100:.0f}%"
-        if eixo_x=="Banda": return v.replace("Mbps","")
-        return str(v)
-
     # Prepara dados
     medias = {g: [] for g in vals_g}
     desvios = {g: [] for g in vals_g}
@@ -135,6 +129,28 @@ def barras_agrupadas(dados, eixo_x, grupos, y_attr, nome_x, nome_y, titulo,
             else:
                 medias[g].append(0)
                 desvios[g].append(0)
+
+    # Prep X-tick labels
+    def rot_x(v):
+        if eixo_x=="Perda": return f"{float(v)*100:.0f}%"
+        if eixo_x=="Banda": return v.replace("Mbps","")  # "30", "100"
+        return str(v)
+
+    # Enforce sensible Y-axis limits
+    if ylim is None:
+        if y_attr in ("TaxaSucesso", "QoE"):
+            ylim = (0, 100)
+        elif y_attr == "LatenciaMediaMs":
+            ylim = (0, None)
+    # Clip error bars so they don't extend below 0 or above 100
+    for g in vals_g:
+        for i in range(len(desvios[g])):
+            m = medias[g][i]
+            d = desvios[g][i]
+            if m - d < 0:
+                desvios[g][i] = m
+            if y_attr in ("TaxaSucesso", "QoE") and m + d > 100:
+                desvios[g][i] = 100 - m
 
     fig, ax = plt.subplots(figsize=(max(7, len(vals_x)*2.5), 5.5))
     n_g = len(vals_g)
@@ -369,39 +385,40 @@ def main():
     barras_agrupadas(dados, "Perda", "Protocol", "TaxaSucesso",
                      "Perda de Pacotes", "Taxa de Sucesso (%)",
                      "Sucesso × Perda — TCP/TLS vs QUIC",
-                     subdir, "por-perda-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-perda-e-protocolo.png", cores=COR)
 
     # Sucesso × Tecnologia
     barras_agrupadas(dados, "RotWiFi", "Protocol", "TaxaSucesso",
                      "Tecnologia do Enlace", "Taxa de Sucesso (%)",
                      "Sucesso × Tecnologia — TCP/TLS vs QUIC",
-                     subdir, "por-tecnologia-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-tecnologia-e-protocolo.png", cores=COR)
 
-    # Sucesso × Banda
+    # Sucesso × Taxa de Transmissão
     barras_agrupadas(dados, "Banda", "Protocol", "TaxaSucesso",
-                     "Largura de Banda", "Taxa de Sucesso (%)",
-                     "Sucesso × Banda — TCP/TLS vs QUIC",
-                     subdir, "por-banda-e-protocolo.png", cores=COR, ylim=(0,110))
+                     "Taxa de Transmissão", "Taxa de Sucesso (%)",
+                     "Sucesso × Taxa de Transmissão — TCP/TLS vs QUIC",
+                     subdir, "por-banda-e-protocolo.png", cores=COR)
 
     # Sucesso × Clientes Ativos
     barras_agrupadas(dados, "ClientesAtivos", "Protocol", "TaxaSucesso",
                      "Clientes Ativos", "Taxa de Sucesso (%)",
                      "Sucesso × Clientes Ativos — TCP/TLS vs QUIC",
-                     subdir, "por-clientes-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-clientes-e-protocolo.png", cores=COR)
 
     # Sucesso × Clientes Fundo
     barras_agrupadas(dados, "ClientesFundo", "Protocol", "TaxaSucesso",
                      "Nós de Tráfego de Fundo", "Taxa de Sucesso (%)",
                      "Sucesso × Tráfego de Fundo — TCP/TLS vs QUIC",
-                     subdir, "por-fundo-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-fundo-e-protocolo.png", cores=COR)
 
-    # Sucesso × Perda × Banda (barras agrupadas por banda)
+    # Sucesso × Perda × Taxa de Transmissão
     for banda in sorted(set(r["Banda"] for r in dados)):
         sub = filt(dados, Banda=banda)
+        lbl = banda.replace("Mbps"," Mbps")
         barras_agrupadas(sub, "Perda", "Protocol", "TaxaSucesso",
                          "Perda de Pacotes", "Taxa de Sucesso (%)",
-                         f"Sucesso × Perda ({banda}) — TCP/TLS vs QUIC",
-                         subdir, f"por-perda-{banda.lower()}.png", cores=COR, ylim=(0,110))
+                         f"Sucesso × Perda ({lbl}) — TCP/TLS vs QUIC",
+                         subdir, f"por-perda-{banda.lower()}.png", cores=COR)
 
     # Sucesso × Perda × Tecnologia
     for tec in ["Ethernet","WiFi"]:
@@ -409,7 +426,7 @@ def main():
         barras_agrupadas(sub, "Perda", "Protocol", "TaxaSucesso",
                          "Perda de Pacotes", "Taxa de Sucesso (%)",
                          f"Sucesso × Perda ({tec}) — TCP/TLS vs QUIC",
-                         subdir, f"por-perda-{tec.lower()}.png", cores=COR, ylim=(0,110))
+                         subdir, f"por-perda-{tec.lower()}.png", cores=COR)
 
     # ===============================================================
     # 2. LATÊNCIA
@@ -421,27 +438,27 @@ def main():
     barras_agrupadas(dados_lat, "Perda", "Protocol", "LatenciaMediaMs",
                      "Perda de Pacotes", "Latência Média (ms)",
                      "Latência × Perda — TCP/TLS vs QUIC",
-                     subdir, "por-perda-e-protocolo.png", cores=COR, ylim=(0,None))
+                     subdir, "por-perda-e-protocolo.png", cores=COR)
 
     barras_agrupadas(dados_lat, "RotWiFi", "Protocol", "LatenciaMediaMs",
                      "Tecnologia", "Latência Média (ms)",
                      "Latência × Tecnologia",
-                     subdir, "por-tecnologia-e-protocolo.png", cores=COR, ylim=(0,None))
+                     subdir, "por-tecnologia-e-protocolo.png", cores=COR)
 
     barras_agrupadas(dados_lat, "Banda", "Protocol", "LatenciaMediaMs",
-                     "Banda", "Latência Média (ms)",
-                     "Latência × Banda",
-                     subdir, "por-banda-e-protocolo.png", cores=COR, ylim=(0,None))
+                     "Taxa de Transmissão", "Latência Média (ms)",
+                     "Latência × Taxa de Transmissão",
+                     subdir, "por-banda-e-protocolo.png", cores=COR)
 
     barras_agrupadas(dados_lat, "ClientesAtivos", "Protocol", "LatenciaMediaMs",
                      "Clientes Ativos", "Latência Média (ms)",
                      "Latência × Clientes Ativos",
-                     subdir, "por-clientes-e-protocolo.png", cores=COR, ylim=(0,None))
+                     subdir, "por-clientes-e-protocolo.png", cores=COR)
 
     barras_agrupadas(dados_lat, "ClientesFundo", "Protocol", "LatenciaMediaMs",
                      "Nós de Fundo", "Latência Média (ms)",
                      "Latência × Tráfego de Fundo",
-                     subdir, "por-fundo-e-protocolo.png", cores=COR, ylim=(0,None))
+                     subdir, "por-fundo-e-protocolo.png", cores=COR)
 
     # ===============================================================
     # 3. HEATMAPS
@@ -462,12 +479,12 @@ def main():
             "Sucesso × Fundo × Protocolo",
             subdir, "sucesso-fundo-protocolo.png", vmin=0, vmax=100)
 
-    # heatmap 2D: perda × banda
+    # heatmap 2D: perda × taxa de transmissão
     for proto in ["TCP","QUIC"]:
         sub = filt(dados, Protocol=proto)
         if not sub: continue
         heatmap(sub, "Perda", "Banda", "TaxaSucesso",
-                f"Sucesso × Perda × Banda ({ROT.get(proto,proto)})",
+                f"Sucesso × Perda × Tx ({ROT.get(proto,proto)})",
                 subdir, f"sucesso-perda-banda-{proto.lower()}.png", vmin=0, vmax=100)
 
     # ===============================================================
@@ -481,31 +498,31 @@ def main():
     barras_agrupadas(dados, "Perda", "Protocol", "QoE",
                      "Taxa de Perda de Pacotes", "QoE Score (0–100)",
                      "QoE × Perda — TCP/TLS vs QUIC",
-                     subdir, "por-perda-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-perda-e-protocolo.png", cores=COR)
 
-    # QoE × Banda (eixo X: taxa de transmissão)
+    # QoE × Taxa de Transmissão
     barras_agrupadas(dados, "Banda", "Protocol", "QoE",
-                     "Taxa de Transmissão (Mbps)", "QoE Score (0–100)",
+                     "Taxa de Transmissão", "QoE Score (0–100)",
                      "QoE × Taxa de Transmissão — TCP/TLS vs QUIC",
-                     subdir, "por-banda-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-banda-e-protocolo.png", cores=COR)
 
     # QoE × Tecnologia
     barras_agrupadas(dados, "RotWiFi", "Protocol", "QoE",
                      "Tecnologia do Enlace", "QoE Score (0–100)",
                      "QoE × Tecnologia — TCP/TLS vs QUIC",
-                     subdir, "por-tecnologia-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-tecnologia-e-protocolo.png", cores=COR)
 
     # QoE × Clientes Ativos
     barras_agrupadas(dados, "ClientesAtivos", "Protocol", "QoE",
                      "Clientes Ativos", "QoE Score (0–100)",
                      "QoE × Clientes Ativos — TCP/TLS vs QUIC",
-                     subdir, "por-clientes-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-clientes-e-protocolo.png", cores=COR)
 
     # QoE × Clientes Fundo
     barras_agrupadas(dados, "ClientesFundo", "Protocol", "QoE",
                      "Nós de Tráfego de Fundo", "QoE Score (0–100)",
                      "QoE × Tráfego de Fundo — TCP/TLS vs QUIC",
-                     subdir, "por-fundo-e-protocolo.png", cores=COR, ylim=(0,110))
+                     subdir, "por-fundo-e-protocolo.png", cores=COR)
 
     # QoE × Perda × Tecnologia
     for tec in ["Ethernet","WiFi"]:
@@ -513,15 +530,16 @@ def main():
         barras_agrupadas(sub, "Perda", "Protocol", "QoE",
                          "Taxa de Perda de Pacotes", "QoE Score (0–100)",
                          f"QoE × Perda ({tec}) — TCP/TLS vs QUIC",
-                         subdir, f"por-perda-{tec.lower()}.png", cores=COR, ylim=(0,110))
+                         subdir, f"por-perda-{tec.lower()}.png", cores=COR)
 
-    # QoE × Perda × Banda
+    # QoE × Perda × Taxa de Transmissão
     for banda in sorted(set(r["Banda"] for r in dados)):
         sub = filt(dados, Banda=banda)
+        lbl = banda.replace("Mbps"," Mbps")
         barras_agrupadas(sub, "Perda", "Protocol", "QoE",
                          "Taxa de Perda de Pacotes", "QoE Score (0–100)",
-                         f"QoE × Perda ({banda}bps) — TCP/TLS vs QUIC",
-                         subdir, f"por-perda-{banda.lower()}.png", cores=COR, ylim=(0,110))
+                         f"QoE × Perda ({lbl}) — TCP/TLS vs QUIC",
+                         subdir, f"por-perda-{banda.lower()}.png", cores=COR)
 
     # ===============================================================
     # 5. RELATÓRIO
