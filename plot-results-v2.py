@@ -69,9 +69,23 @@ def carrega(dir_):
                     for k in ("ClientesAtivos","ClientesFundo","NumClientes"):
                         try: r[k]=int(float(r[k]))
                         except: r[k]=0
+                    for k in ("Sucessos","Tentativas"):
+                        try: r[k]=int(float(r[k]))
+                        except: r[k]=0
                     exp=r.get("ProtocoloExp","")
-                    r["Protocol"]="TCP" if exp=="TCP-TLS" else "QUIC"
-                    r["RotWiFi"]="WiFi" if r.get("WiFi") else "Ethernet"
+                    # r["Protocol"] already set from CSV column via PT_EN mapping
+                    # DON'T overwrite — keep CSV value as ground truth
+                    csvProto = r.get("Protocol","")
+                    # Fix: "WiFi" column is string "0"/"1", both truthy
+                    wifi_val = r.get("WiFi","0")
+                    r["RotWiFi"]="WiFi" if int(float(wifi_val)) else "Ethernet"
+                    # Filter garbage rows: TCP=0/0 row in QUIC experiment folder
+                    is_quic_exp = (exp == "QUIC")
+                    is_tcp_exp = (exp == "TCP-TLS")
+                    if csvProto == "TCP" and is_quic_exp and r.get("Tentativas",1)==0:
+                        continue  # garbage TCP row in QUIC-only experiment
+                    if csvProto == "QUIC" and is_tcp_exp and r.get("Tentativas",1)==0:
+                        continue  # QUIC row in TCP-only experiment (shouldn't exist)
                     rows.append(r)
         except: pass
     print(f"  {len(files)} CSVs, {len(rows)} linhas")
@@ -224,6 +238,31 @@ def boxplot_grupo(dados, grupos, y_attr, nome_y, titulo, outdir, nome_arq, cores
 # RELATÓRIO
 # ===================================================================
 
+# ===================================================================
+# MÉTRICA QOE — Website Loading Experience
+# ===================================================================
+# Modelo: um site carrega via N conexões paralelas. A experiência depende de:
+#   - quantas conexões são bem-sucedidas (TaxaSucesso)
+#   - quão rápido cada handshake completa (LatenciaMediaMs)
+#
+# QoE = TaxaSucesso * exp(-LatenciaMediaMs / 200)
+#   - 100% @ 0ms   -> 100.0
+#   - 100% @ 200ms ->  36.8
+#   -  50% @ 55ms  ->  38.0
+#   -   0% @ any   ->   0.0
+
+def qoe_score(taxa, lat):
+    """Website loading experience score (0-100)."""
+    if taxa <= 0 or lat < 0:
+        return 0.0
+    return taxa * np.exp(-lat / 200.0)
+
+def add_qoe(dados):
+    """Adiciona coluna QoE a cada linha."""
+    for r in dados:
+        r["QoE"] = qoe_score(r.get("TaxaSucesso",0), r.get("LatenciaMediaMs",0))
+    return dados
+
 def relatorio(dados, outdir):
     path = os.path.join(outdir, "resumo.txt")
     with open(path, "w") as f:
@@ -234,9 +273,11 @@ def relatorio(dados, outdir):
             sub = filt(dados, Protocol=proto)
             sr = ext(sub, "TaxaSucesso")
             lt = ext([r for r in sub if r.get("LatenciaMediaMs",0)>0], "LatenciaMediaMs")
+            qe = ext(sub, "QoE")
             f.write(f"{ROT.get(proto,proto)}: n={len(sub)}  "
                     f"sucesso={ms(sr)[0]:.1f}%  "
-                    f"lat={ms(lt)[0]:.1f}ms\n")
+                    f"lat={ms(lt)[0]:.1f}ms  "
+                    f"QoE={ms(qe)[0]:.1f}\n")
     print(f"  -> {path}")
 
 
@@ -256,11 +297,17 @@ def main():
     dados = carrega(args.directory)
     dados_lat = [r for r in dados if r.get("LatenciaMediaMs",0) > 0]
 
+    # Add QoE metric
+    dados = add_qoe(dados)
+    # Re-filter lat with QoE
+    dados_lat = [r for r in dados if r.get("LatenciaMediaMs",0) > 0]
+
     # ===============================================================
-    # RAÍZ — visão geral
+    # RAÍZ — visão geral (Sucesso, Latência, QoE)
     # ===============================================================
     print("\nGeral...")
-    # Sucesso geral — barra simples sem agrupamento
+
+    # Sucesso geral
     fig, ax = plt.subplots(figsize=(6, 4.5))
     vals = [ext(filt(dados, Protocol=p), "TaxaSucesso") for p in ["TCP","QUIC"]]
     med = [np.mean(v) if len(v) else 0 for v in vals]
@@ -291,9 +338,25 @@ def main():
     plt.close(fig)
     print(f"  -> {args.output}/01-latencia-geral.png")
 
+    # QoE geral (website loading experience)
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    vals = [ext(filt(dados, Protocol=p), "QoE") for p in ["TCP","QUIC"]]
+    med = [np.mean(v) if len(v) else 0 for v in vals]
+    std = [np.std(v) if len(v) else 0 for v in vals]
+    ax.bar([0,1], med, yerr=std, capsize=6, color=[COR["TCP"], COR["QUIC"]],
+           edgecolor="white", width=0.45, tick_label=["TCP/TLS", "QUIC"])
+    ax.set_ylabel("QoE Score (0–100)")
+    ax.set_title("Website Loading Experience — TCP/TLS vs QUIC\n(QoE = Sucesso × exp(-Latência/200ms))")
+    ax.set_ylim(0, 110)
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.output, "02-qoe-geral.png"))
+    plt.close(fig)
+    print(f"  -> {args.output}/02-qoe-geral.png")
+
     boxplot_grupo(dados_lat, "Protocol", "LatenciaMediaMs",
                   "Latência (ms)", "Distribuição da Latência — TCP/TLS vs QUIC",
-                  args.output, "02-boxplot-latencia.png", cores=COR)
+                  args.output, "03-boxplot-latencia.png", cores=COR)
 
     # ===============================================================
     # 1. SUCESSO
@@ -408,7 +471,60 @@ def main():
                 subdir, f"sucesso-perda-banda-{proto.lower()}.png", vmin=0, vmax=100)
 
     # ===============================================================
-    # 4. RELATÓRIO
+    # 4. QoE — Website Loading Experience
+    # ===============================================================
+    subdir = os.path.join(args.output, "qoe")
+    os.makedirs(subdir, exist_ok=True)
+    print("qoe/...")
+
+    # QoE × Perda
+    barras_agrupadas(dados, "Perda", "Protocol", "QoE",
+                     "Taxa de Perda de Pacotes", "QoE Score (0–100)",
+                     "QoE × Perda — TCP/TLS vs QUIC",
+                     subdir, "por-perda-e-protocolo.png", cores=COR, ylim=(0,110))
+
+    # QoE × Banda (eixo X: taxa de transmissão)
+    barras_agrupadas(dados, "Banda", "Protocol", "QoE",
+                     "Taxa de Transmissão (Mbps)", "QoE Score (0–100)",
+                     "QoE × Taxa de Transmissão — TCP/TLS vs QUIC",
+                     subdir, "por-banda-e-protocolo.png", cores=COR, ylim=(0,110))
+
+    # QoE × Tecnologia
+    barras_agrupadas(dados, "RotWiFi", "Protocol", "QoE",
+                     "Tecnologia do Enlace", "QoE Score (0–100)",
+                     "QoE × Tecnologia — TCP/TLS vs QUIC",
+                     subdir, "por-tecnologia-e-protocolo.png", cores=COR, ylim=(0,110))
+
+    # QoE × Clientes Ativos
+    barras_agrupadas(dados, "ClientesAtivos", "Protocol", "QoE",
+                     "Clientes Ativos", "QoE Score (0–100)",
+                     "QoE × Clientes Ativos — TCP/TLS vs QUIC",
+                     subdir, "por-clientes-e-protocolo.png", cores=COR, ylim=(0,110))
+
+    # QoE × Clientes Fundo
+    barras_agrupadas(dados, "ClientesFundo", "Protocol", "QoE",
+                     "Nós de Tráfego de Fundo", "QoE Score (0–100)",
+                     "QoE × Tráfego de Fundo — TCP/TLS vs QUIC",
+                     subdir, "por-fundo-e-protocolo.png", cores=COR, ylim=(0,110))
+
+    # QoE × Perda × Tecnologia
+    for tec in ["Ethernet","WiFi"]:
+        sub = filt(dados, RotWiFi=tec)
+        barras_agrupadas(sub, "Perda", "Protocol", "QoE",
+                         "Taxa de Perda de Pacotes", "QoE Score (0–100)",
+                         f"QoE × Perda ({tec}) — TCP/TLS vs QUIC",
+                         subdir, f"por-perda-{tec.lower()}.png", cores=COR, ylim=(0,110))
+
+    # QoE × Perda × Banda
+    for banda in sorted(set(r["Banda"] for r in dados)):
+        sub = filt(dados, Banda=banda)
+        barras_agrupadas(sub, "Perda", "Protocol", "QoE",
+                         "Taxa de Perda de Pacotes", "QoE Score (0–100)",
+                         f"QoE × Perda ({banda}bps) — TCP/TLS vs QUIC",
+                         subdir, f"por-perda-{banda.lower()}.png", cores=COR, ylim=(0,110))
+
+    # ===============================================================
+    # 5. RELATÓRIO
     # ===============================================================
     relatorio(dados, args.output)
 

@@ -99,6 +99,7 @@ static double g_timeoutLimit = 10.0;
 static bool g_verboseConn = false;
 static uint32_t g_tcpCompleted = 0;
 static uint32_t g_tcpTotal = 0;
+static uint32_t g_quicTotal = 0;       // declared upfront (numQuicClients)
 static uint32_t g_tlsPayloadSize = 0;  // bytes to send after TCP handshake (TLS sim)
 static bool g_tlsPhaseEnabled = false;
 
@@ -342,14 +343,20 @@ OnQuicRx(Ptr<const Packet> p, const QuicHeader& h, Ptr<const QuicSocketBase> s)
 // ===========================================================================
 
 static void
+HookQuicNodeRx(Ptr<Node> node)
+{
+  std::ostringstream rxPath;
+  rxPath << "/NodeList/" << node->GetId()
+         << "/$ns3::QuicL4Protocol/SocketList/*/QuicSocketBase/Rx";
+  Config::ConnectWithoutContext(rxPath.str(), MakeCallback(&OnQuicRx));
+}
+
+static void
 HookQuicTraces(Ptr<Node> /*server*/, NodeContainer quicStaNodes)
 {
   for (uint32_t i = 0; i < quicStaNodes.GetN(); i++)
     {
-      std::ostringstream rxPath;
-      rxPath << "/NodeList/" << quicStaNodes.Get(i)->GetId()
-             << "/$ns3::QuicL4Protocol/SocketList/*/QuicSocketBase/Rx";
-      Config::ConnectWithoutContext(rxPath.str(), MakeCallback(&OnQuicRx));
+      HookQuicNodeRx(quicStaNodes.Get(i));
     }
 }
 
@@ -666,6 +673,7 @@ int main(int argc, char* argv[])
 
   g_timeoutLimit = connectionTimeout;
   g_tcpTotal = numTcpClients * connPerClient;
+  g_quicTotal = numQuicClients;
 
   // -----------------------------------------------------------------------
   // Output directory
@@ -991,7 +999,7 @@ int main(int argc, char* argv[])
                           Seconds(connectionTimeout));
     }
 
-  // QUIC clients
+  // QUIC clients — staggered starts to avoid flooding bottleneck/WiFi
   if (enableQuic && numQuicClients > 0)
     {
       for (uint32_t i = 0; i < numQuicClients; i++)
@@ -999,13 +1007,16 @@ int main(int argc, char* argv[])
           QuicClientHelper quicClient(serverAddr, quicServerPort);
           quicClient.SetAttribute("Interval", TimeValue(MicroSeconds(10000)));
           quicClient.SetAttribute("PacketSize", UintegerValue(payloadSize));
-          quicClient.SetAttribute("MaxPackets", UintegerValue(10000000));
+          // Send just enough packets to verify handshake + a few data round-trips.
+          // 10M packets per client overflows the QUIC module's internal buffers.
+          quicClient.SetAttribute("MaxPackets", UintegerValue(200));
           ApplicationContainer app = quicClient.Install(quicStaNodes.Get(i));
-          app.Start(Seconds(warmupTime));
+          app.Start(Seconds(warmupTime + i * connectionInterval));
           app.Stop(Seconds(stopTime));
+          // Hook Rx trace right after this client app starts (socket exists by then)
+          Simulator::Schedule(Seconds(warmupTime + i * connectionInterval + 0.001),
+                              &HookQuicNodeRx, quicStaNodes.Get(i));
         }
-      Simulator::Schedule(Seconds(warmupTime + 0.01),
-                          &HookQuicTraces, serverNode.Get(0), quicStaNodes);
     }
 
   // Background
@@ -1128,11 +1139,24 @@ int main(int argc, char* argv[])
   for (auto& fr : failReasons)
     std::cout << "    [" << fr.first << "]: " << fr.second << std::endl;
 
+  // Flush remaining pending QUIC entries as failures
+  for (auto& entry : g_pendingQuic)
+    {
+      if (!entry.second.succeeded)
+        {
+          entry.second.failureReason = "NoShortPacket";
+          entry.second.latencyMs = -1;
+          g_quicResults.push_back(entry.second);
+        }
+    }
+  g_pendingQuic.clear();
+
   // --- QUIC ---
   uint32_t quicSuccess = 0, quic0RTT = 0;
   double quicSumLat = 0, quicMinLat = 1e9, quicMaxLat = 0;
   uint32_t quicLatCount = 0;
-  uint32_t quicTotal = g_quicResults.size();
+  // Use upfront total (numQuicClients) for fair success rate
+  uint32_t quicTotal = g_quicTotal;
 
   for (auto& r : g_quicResults)
     {
@@ -1153,13 +1177,20 @@ int main(int argc, char* argv[])
   if (enableQuic && numQuicClients > 0)
     {
       std::cout << "\n--- QUIC ---" << std::endl;
-      std::cout << "  Detectados:     " << quicTotal << std::endl;
+      std::cout << "  Tentativas:     " << quicTotal << std::endl;
       std::cout << "  Sucessos:       " << quicSuccess << std::endl;
+      std::cout << "  Falhas:         " << (quicTotal - quicSuccess) << std::endl;
       std::cout << "  Fluxos 0-RTT:   " << quic0RTT << std::endl;
       std::cout << "  Taxa de sucesso:" << std::fixed << std::setprecision(1)
                 << (quicTotal > 0 ? 100.0 * quicSuccess / quicTotal : 0) << " %" << std::endl;
       std::cout << "  Latência média: " << std::setprecision(2) << quicAvgLat << " ms" << std::endl;
       std::cout << "  Latência mín/máx:" << quicMinLat << " / " << quicMaxLat << " ms" << std::endl;
+
+      std::map<std::string, uint32_t> quicFailReasons;
+      for (auto& r : g_quicResults)
+        if (!r.succeeded) quicFailReasons[r.failureReason]++;
+      for (auto& fr : quicFailReasons)
+        std::cout << "    [" << fr.first << "]: " << fr.second << std::endl;
     }
 
   std::cout << "=======================================================" << std::endl;

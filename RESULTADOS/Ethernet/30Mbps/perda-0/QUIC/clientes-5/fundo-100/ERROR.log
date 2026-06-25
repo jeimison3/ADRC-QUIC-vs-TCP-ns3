@@ -1,8 +1,0 @@
-[01m[K/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.48/scratch/connection-success.cc:56:10:[m[K [01;31m[Kfatal error: [m[Kns3/quic-module.h: Arquivo ou diretório inexistente
-   56 | #include [01;31m[K"ns3/quic-module.h"[m[K
-      |          [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
-compilation terminated.
-gmake[3]: *** [scratch/CMakeFiles/scratch_connection-success.dir/build.make:76: scratch/CMakeFiles/scratch_connection-success.dir/connection-success.cc.o] Erro 1
-gmake[2]: *** [CMakeFiles/Makefile2:16623: scratch/CMakeFiles/scratch_connection-success.dir/all] Erro 2
-gmake[1]: *** [CMakeFiles/Makefile2:16629: scratch/CMakeFiles/scratch_connection-success.dir/rule] Erro 2
-gmake: *** [Makefile:5656: scratch_connection-success] Erro 2

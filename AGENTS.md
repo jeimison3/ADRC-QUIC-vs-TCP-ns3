@@ -165,6 +165,46 @@ sock->SetCloseCallbacks(
     MakeCallback(&OnErrorClose));           // void(Ptr<Socket>)
 ```
 
+## QUIC module: known bugs & limitations
+
+### Handshake retransmission NOT implemented
+`quic-socket-base.cc:1503-1505`:
+```cpp
+// Handshake retransmission alarm.
+//TODO retransmit handshake packets      // ← NEVER implemented
+//RetransmitAllHandshakePackets();
+```
+If the INITIAL packet is lost (WiFi congestion, bottleneck queue overflow), the QUIC connection
+**dies silently** — the socket stays in `CONNECTING_CLT` forever with no retransmission.
+TCP handles this via built-in SYN retransmission; QUIC in ns-3 does not.
+
+**Workaround**: stagger QUIC client starts (`connectionInterval` apart) so INITIALs don't flood
+the bottleneck simultaneously.
+
+### `QuicServer` is a pure sink — no echo
+`QuicServer::HandleRead()` only increments a counter; it never sends data back.
+After the handshake, the server only sends QUIC-level ACK frames (short-header packets).
+This is sufficient for handshake detection (ACKs are short-header), but no application-layer
+response is sent. For bidirectional tests use `QuicEchoClient`/`QuicEchoServer`.
+
+### `MaxPackets` must be reasonable (< ~1000)
+Setting `MaxPackets=10000000` (10M packets per client) overflows the QUIC module's internal
+buffers and causes `NS_ASSERT` crash in `quic-subheader.cc:499` (frame type out of range).
+Use a small value (~200) for handshake-only tests. The default `10000000` in examples is for
+unlimited bulk transfers.
+
+### `Config::ConnectWithoutContext` fails on empty `ObjectVector`
+When hooking Rx traces with wildcard `SocketList/*`, if the `SocketList` is empty (no sockets
+created yet), `ConnectWithoutContext` returns `false` → `NS_FATAL`. Use one of:
+- **Hook after sockets exist**: `Simulator::Schedule(startTime + 0.001, &HookQuicNodeRx, node)`
+- **Use fixed index**: `SocketList/0/...` (only works if exactly 1 socket per node)
+
+### `QuicHelper::InstallQuic` installs the full InternetStack
+`QuicHelper::InstallQuic(node)` calls `InternetStackHelper::Install(node)` internally (adds
+UDP, TCP, IPv4, ARP, etc.) and then aggregates `QuicL4Protocol`. Calling both
+`internet.Install(nodes)` + `quicHelper.InstallQuic(nodes)` is redundant but harmless
+(`AggregateObject` silently ignores duplicate TypeIds).
+
 ## QUIC module: handshake detection
 
 **Critical limitation**: `QuicSocketBase::m_socketState` is a `TracedValue<QuicStates_t>` but the
@@ -185,6 +225,8 @@ Config path:
 ```
 /NodeList/<id>/$ns3::QuicL4Protocol/SocketList/*/QuicSocketBase/Rx
 ```
+**SocketList elements are `QuicUdpBinding` objects** (not `QuicSocketBase` directly).
+The path segment `QuicSocketBase` accesses `QuicUdpBinding::m_quicSocket` pointer attribute.
 
 ### Strategy B: CongState → CA_OPEN
 When handshake completes, `ConnectionSucceeded()` sets congestion state to `CA_OPEN`.
@@ -230,22 +272,30 @@ NOT available: `State`, `AdvWND`, `RWND`, `BytesInFlight`, `HighestRxSequence`, 
 
 ### TCP approach
 ```
-1. Create a socket with TcpSocketFactory
-2. Register SetConnectCallback(successFn, failFn) + SetCloseCallbacks(normalFn, errorFn)
-3. Call sock->Connect(remoteAddr)
-4. On success callback: record latency (now - connectTime), increment success counter
-5. On fail/error callback: increment failure counter
-6. Report: successRate = successes / (successes + failures), avgHandshakeTime
+1. Declare g_tcpTotal = numTcpClients * connPerClient upfront
+2. Create short-lived sockets with TcpSocketFactory
+3. Register SetConnectCallback(successFn, failFn) + SetCloseCallbacks(normalFn, errorFn)
+4. Call sock->Connect(remoteAddr)
+5. Stagger connections with Simulator::Schedule to avoid flooding
+6. On success callback: record latency, increment success counter
+7. On fail/error/timeout callback: increment failure counter
+8. Report: successRate = successes / g_tcpTotal
 ```
 
-### QUIC approach
+### QUIC approach (correct pattern)
 ```
-1. Hook into "Rx" trace on QuicSocketBase
-2. When IsInitial() detected: record start time for that socket
-3. When IsHandshake() detected + CongState becomes CA_OPEN: record handshake complete
-4. For 0-RTT: when IsORTT() detected: mark as 0-RTT flow
-5. Use a timeout: if no IsHandshake() or CA_OPEN within N seconds → failure
+1. Declare g_quicTotal = numQuicClients upfront (NOT g_quicResults.size()!)
+2. Each QuicClient app creates 1 persistent QuicSocketBase (1 handshake per client)
+3. Stagger app starts: app.Start(warmupTime + i * connectionInterval)
+4. Hook Rx trace per-node AFTER app starts: Schedule(warmupTime + i*interval + 0.001, &HookQuicNodeRx)
+5. Detection: HANDSHAKE packet → create pending entry; first SHORT/0RTT packet → mark success
+6. CheckTimeouts moves stale pending entries to g_quicResults as failures
+7. At simulation end, flush remaining g_pendingQuic as failures
+8. Report: successRate = successes / g_quicTotal
 ```
+**WARNING**: Never use `g_quicResults.size()` as the denominator — it only counts sockets
+that received a HANDSHAKE. Sockets with lost INITIALs are invisible and would inflate the
+reported success rate (e.g., 21/21 = 100% reported vs 21/45 = 46.7% actual).
 
 ### UDP (baseline)
 ```
