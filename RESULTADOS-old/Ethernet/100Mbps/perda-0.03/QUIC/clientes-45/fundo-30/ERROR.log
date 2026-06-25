@@ -1,0 +1,42 @@
+gmake[1]: *** [CMakeFiles/Makefile2:20788: examples/socket/CMakeFiles/socket-bound-static-routing.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20747: examples/routing/CMakeFiles/simple-multicast-flooding.dir/all] Interrupção
+gmake[2]: *** [examples/tcp/CMakeFiles/star.dir/build.make:110: examples/tcp/CMakeFiles/star.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:21082: examples/tcp/CMakeFiles/star.dir/all] Interrupção
+gmake[2]: *** [examples/tcp/CMakeFiles/tcp-large-transfer.dir/build.make:109: examples/tcp/CMakeFiles/tcp-large-transfer.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20992: examples/tcp/CMakeFiles/tcp-large-transfer.dir/all] Interrupção
+gmake[2]: *** [examples/socket/CMakeFiles/socket-options-ipv4.dir/build.make:109: examples/socket/CMakeFiles/socket-options-ipv4.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20870: examples/socket/CMakeFiles/socket-options-ipv4.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20490: examples/routing/CMakeFiles/mixed-global-routing.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:21125: examples/tcp/CMakeFiles/tcp-ecn-example.dir/all] Interrupção
+gmake[2]: *** [examples/stats/CMakeFiles/wifi-example-sim.dir/build.make:125: examples/stats/CMakeFiles/wifi-example-sim.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20951: examples/stats/CMakeFiles/wifi-example-sim.dir/all] Interrupção
+gmake[2]: *** [examples/socket/CMakeFiles/socket-options-ipv6.dir/build.make:109: examples/socket/CMakeFiles/socket-options-ipv6.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:20911: examples/socket/CMakeFiles/socket-options-ipv6.dir/all] Interrupção
+gmake[2]: *** [examples/tcp/CMakeFiles/tcp-star-server.dir/build.make:109: examples/tcp/CMakeFiles/tcp-star-server.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:21033: examples/tcp/CMakeFiles/tcp-star-server.dir/all] Interrupção
+gmake: *** [Makefile:136: all] Interrupção
+Traceback (most recent call last):
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 2163, in <module>
+    main()
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 2125, in main
+    build_step(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 1354, in build_step
+    cmake_build(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 1188, in cmake_build
+    ret = subprocess.run(
+          ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1201, in communicate
+    self.wait()
+  File "/usr/lib/python3.12/subprocess.py", line 1264, in wait
+    return self._wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2053, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2011, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

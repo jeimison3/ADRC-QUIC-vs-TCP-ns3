@@ -99,9 +99,37 @@ static double g_timeoutLimit = 10.0;
 static bool g_verboseConn = false;
 static uint32_t g_tcpCompleted = 0;
 static uint32_t g_tcpTotal = 0;
+static uint32_t g_tlsPayloadSize = 0;  // bytes to send after TCP handshake (TLS sim)
+static bool g_tlsPhaseEnabled = false;
 
 // Output directory
 static std::string g_outputDir;
+
+// ===========================================================================
+// TCP Echo Server (simula TLS ServerHello ecoando os dados do cliente)
+// ===========================================================================
+
+static void
+OnEchoServerRecv(Ptr<Socket> sock)
+{
+  Ptr<Packet> p;
+  while ((p = sock->Recv()))
+    {
+      sock->Send(p->Copy());  // ecoa de volta — simula ServerHello + HTTP response
+    }
+}
+
+static void
+OnEchoServerNewConn(Ptr<Socket> sock, const Address& from)
+{
+  sock->SetRecvCallback(MakeCallback(&OnEchoServerRecv));
+}
+
+static bool
+AlwaysAccept(Ptr<Socket> sock, const Address& from)
+{
+  return true;  // aceita todas as conexões
+}
 
 // ===========================================================================
 // Directory helpers
@@ -156,6 +184,13 @@ OnTcpConnectionSucceeded(Ptr<Socket> sock)
   r.failureReason = "";
   g_pendingTcp[sock] = r;
   g_tcpStartTimes.erase(it);
+
+  // Envia payload simulando TLS ClientHello (se ativado)
+  if (g_tlsPhaseEnabled && g_tlsPayloadSize > 0)
+    {
+      Ptr<Packet> p = Create<Packet>(g_tlsPayloadSize);
+      sock->Send(p);
+    }
 
   g_tcpCompleted++;
 
@@ -222,7 +257,21 @@ OnTcpErrorClose(Ptr<Socket> sock)
 static void
 OnTcpDataReceived(Ptr<Socket> sock)
 {
-  Ptr<Packet> p;
+  Ptr<Packet> p = sock->Recv();
+  if (p)
+    {
+      // TLS phase: servidor ecoou os dados — TLS handshake completo
+      auto it = g_pendingTcp.find(sock);
+      if (it != g_pendingTcp.end() && it->second.succeeded && g_tlsPhaseEnabled)
+        {
+          double now = Simulator::Now().GetSeconds();
+          it->second.latencyMs = (now - it->second.startTime) * 1000.0;
+          if (g_verboseConn)
+            std::cout << now << "s TCP-TLS [" << it->second.latencyMs
+                      << " ms total]" << std::endl;
+        }
+    }
+  // Drain restante
   while ((p = sock->Recv()))
     { }
 }
@@ -532,6 +581,7 @@ int main(int argc, char* argv[])
   double connectionTimeout = 10.0;
   uint32_t payloadSize = 1400;
   double simulationTime = 60.0;
+  double wifiDistance = 5.0;  // metros AP → STAs
 
   bool enableQuic = false;
   uint32_t numQuicClients = 0;
@@ -574,6 +624,11 @@ int main(int argc, char* argv[])
   cmd.AddValue("connTimeout", "Handshake timeout (seconds)", connectionTimeout);
   cmd.AddValue("payloadSize", "Payload size in bytes", payloadSize);
 
+  // TLS phase
+  cmd.AddValue("tlsPayloadSize",
+               "Bytes to send after TCP handshake to simulate TLS (0=disabled)",
+               g_tlsPayloadSize);
+
   // QUIC
   cmd.AddValue("enableQuic", "Enable QUIC tests (0/1)", enableQuic);
   cmd.AddValue("numQuicClients", "Number of QUIC client nodes", numQuicClients);
@@ -584,6 +639,8 @@ int main(int argc, char* argv[])
                "WiFi standard: 80211a, 80211b, 80211g, 80211n, 80211ac, 80211ax",
                wifiStandardStr);
   cmd.AddValue("wifiRate", "WiFi data mode (VhtMcs7, etc.)", wifiRate);
+  cmd.AddValue("wifiDistance", "WiFi distance AP→STAs in meters (signal quality)",
+               wifiDistance);
 
   // Background
   cmd.AddValue("background", "Enable background cross-traffic (0/1)",
@@ -648,6 +705,9 @@ int main(int argc, char* argv[])
                          UintegerValue(1 << 21));
       Config::SetDefault("ns3::QuicStreamBase::StreamRcvBufSize",
                          UintegerValue(1 << 21));
+
+      // Instala pilha QUIC no servidor (precisa ser depois do InternetStackHelper)
+      // Será feito após a criação dos nós.
     }
 
   // -----------------------------------------------------------------------
@@ -734,6 +794,13 @@ int main(int argc, char* argv[])
   internet.Install(apNode);
   internet.Install(bgNodes);
 
+  // Instala pilha QUIC no servidor (deve ser depois do InternetStackHelper)
+  if (enableQuic && numQuicClients > 0)
+    {
+      QuicHelper quicStack;
+      quicStack.InstallQuic(serverNode);
+    }
+
   Config::Set("/NodeList/" + std::to_string(router1->GetId()) +
               "/$ns3::Ipv4/IpForward", BooleanValue(true));
   Config::Set("/NodeList/" + std::to_string(router2->GetId()) +
@@ -788,7 +855,7 @@ int main(int argc, char* argv[])
     {
       NetDeviceContainer dev = accessLink.Install(router2, bgNodes.Get(i));
       tch.Install(dev);
-      address.SetBase(("10.0." + std::to_string(100 + i) + ".0").c_str(), "255.255.255.0");
+      address.SetBase(("10.12." + std::to_string(i) + ".0").c_str(), "255.255.255.0");
       address.Assign(dev);
     }
 
@@ -800,12 +867,10 @@ int main(int argc, char* argv[])
   if (enableWifi && wifiStaNodes.GetN() > 0)
     {
       internet.Install(wifiStaNodes);
-
       if (enableQuic && numQuicClients > 0)
         {
-          QuicHelper quicStack;
-          quicStack.InstallQuic(quicStaNodes);
-          quicStack.InstallQuic(serverNode);
+          QuicHelper q;
+          q.InstallQuic(quicStaNodes);
         }
 
       YansWifiChannelHelper wifiChannel;
@@ -844,7 +909,7 @@ int main(int argc, char* argv[])
       Ptr<ListPositionAllocator> posAlloc = CreateObject<ListPositionAllocator>();
       posAlloc->Add(Vector(0.0, 0.0, 0.0));
       for (uint32_t i = 0; i < wifiStaNodes.GetN(); i++)
-        posAlloc->Add(Vector(5.0 + i * 2.0, 0.0, 0.0));
+        posAlloc->Add(Vector(wifiDistance + i * 2.0, 0.0, 0.0));
       mobility.SetPositionAllocator(posAlloc);
       mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
       mobility.Install(apNode);
@@ -859,20 +924,28 @@ int main(int argc, char* argv[])
     {
       // No WiFi: connect STAs via P2P directly
       internet.Install(tcpStaNodes);
-      if (enableQuic) internet.Install(quicStaNodes);
+      if (enableQuic && numQuicClients > 0)
+        {
+          QuicHelper q;
+          q.InstallQuic(quicStaNodes);
+        }
+      else
+        {
+          internet.Install(quicStaNodes);
+        }
 
       for (uint32_t i = 0; i < tcpStaNodes.GetN(); i++)
         {
           NetDeviceContainer dev = accessLink.Install(router2, tcpStaNodes.Get(i));
           tch.Install(dev);
-          address.SetBase(("10.0." + std::to_string(10 + i) + ".0").c_str(), "255.255.255.0");
+          address.SetBase(("10.10." + std::to_string(i) + ".0").c_str(), "255.255.255.0");
           address.Assign(dev);
         }
       for (uint32_t i = 0; i < quicStaNodes.GetN(); i++)
         {
           NetDeviceContainer dev = accessLink.Install(router2, quicStaNodes.Get(i));
           tch.Install(dev);
-          address.SetBase(("10.0." + std::to_string(80 + i) + ".0").c_str(), "255.255.255.0");
+          address.SetBase(("10.11." + std::to_string(i) + ".0").c_str(), "255.255.255.0");
           address.Assign(dev);
         }
     }
@@ -894,16 +967,21 @@ int main(int argc, char* argv[])
       quicServerApp.Stop(Seconds(stopTime + 1));
     }
 
-  // TCP sinks and connection scheduling
+  // Ativa fase TLS se payload > 0
+  if (g_tlsPayloadSize > 0) g_tlsPhaseEnabled = true;
+
+  // TCP echo servers (ecoam dados de volta simulando TLS ServerHello)
   uint16_t tcpPortBase = 5000;
   for (uint32_t i = 0; i < numTcpClients; i++)
     {
       uint16_t port = static_cast<uint16_t>(tcpPortBase + i);
-      PacketSinkHelper tcpSink("ns3::TcpSocketFactory",
-                               InetSocketAddress(Ipv4Address::GetAny(), port));
-      ApplicationContainer sinkApp = tcpSink.Install(serverNode.Get(0));
-      sinkApp.Start(Seconds(warmupTime * 0.5));
-      sinkApp.Stop(Seconds(stopTime + 1));
+      Ptr<Socket> listenSock = Socket::CreateSocket(serverNode.Get(0),
+                                                    TcpSocketFactory::GetTypeId());
+      listenSock->Bind(InetSocketAddress(Ipv4Address::GetAny(), port));
+      listenSock->Listen();
+      listenSock->SetAcceptCallback(
+        MakeCallback(&AlwaysAccept),
+        MakeCallback(&OnEchoServerNewConn));
 
       Simulator::Schedule(Seconds(warmupTime + i * 0.1),
                           &ScheduleTcpConnection,
@@ -973,6 +1051,8 @@ int main(int argc, char* argv[])
     std::cout << "Clientes QUIC:      " << numQuicClients << std::endl;
   std::cout << "Intervalo conexões: " << connectionInterval << " s" << std::endl;
   std::cout << "Timeout handshake:  " << connectionTimeout << " s" << std::endl;
+  if (g_tlsPhaseEnabled)
+    std::cout << "Payload TLS (echo): " << g_tlsPayloadSize << " B" << std::endl;
   std::cout << "---" << std::endl;
   std::cout << "Gargalo (bw/delay/erro): " << bottleneckBandwidth
             << " / " << bottleneckDelay

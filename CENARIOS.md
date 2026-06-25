@@ -262,17 +262,21 @@ indiscriminadamente.
 
 ---
 
-## Cenário 11: Handshake 0-RTT do QUIC
+## Cenário 11: Handshake 0-RTT do QUIC (⚠ não funcional no ns-3.47)
 
 **O que compara:** QUIC com 0-RTT (retomada de sessão) vs. handshake completo.
 
 **Hipótese:** 0-RTT elimina o RTT de handshake. Vantagem dramática sob latência alta.
 
+**Nota:** O módulo QUIC do ns-3.47 não suporta 0-RTT — causa o erro
+`"0RTT Handshake requested with wrong Initial Version"`.
+O cenário está documentado para referência, mas não pode ser executado.
+
 | Nível | Comando | Condições |
 |---|---|---|
-| **1** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --ns3::QuicL4Protocol::0RTT-Handshake=1 --outputDir=quic-0rtt/nivel1"` | 0-RTT ativado |
-| **2** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=30 --bottleneckDelay=100ms --serverDelay=50ms --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel2"` | 0-RTT + latência |
-| **3** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --numUdpClients=1 --connPerClient=5 --duration=60 --bottleneckDelay=100ms --bottleneckError=0.02 --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel3"` | 0-RTT + perda + latência |
+| **1** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --connPerClient=5 --duration=30 --ns3::QuicL4Protocol::0RTT-Handshake=1 --outputDir=quic-0rtt/nivel1"` | ⚠ Falha no QUIC |
+| **2** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --connPerClient=5 --duration=30 --bottleneckDelay=100ms --serverDelay=50ms --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel2"` | ⚠ Falha no QUIC |
+| **3** | `./ns3 run "connection-success --enableQuic=1 --numQuicClients=3 --numTcpClients=3 --connPerClient=5 --duration=60 --bottleneckDelay=100ms --bottleneckError=0.02 --ns3::QuicL4Protocol::0RTT-Handshake=1 --connTimeout=30 --outputDir=quic-0rtt/nivel3"` | ⚠ Falha no QUIC |
 
 ---
 

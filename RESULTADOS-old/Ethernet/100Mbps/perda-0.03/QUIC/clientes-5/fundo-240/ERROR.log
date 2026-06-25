@@ -1,0 +1,44 @@
+gmake[1]: *** [CMakeFiles/Makefile2:23809: examples/wireless/CMakeFiles/wifi-wired-bridging.dir/all] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-spectrum-per-interference.dir/build.make:109: examples/wireless/CMakeFiles/wifi-spectrum-per-interference.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23562: examples/wireless/CMakeFiles/wifi-spectrum-per-interference.dir/all] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-spectrum-per-example.dir/build.make:109: examples/wireless/CMakeFiles/wifi-spectrum-per-example.dir/depend] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-tcp.dir/build.make:109: examples/wireless/CMakeFiles/wifi-tcp.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23521: examples/wireless/CMakeFiles/wifi-spectrum-per-example.dir/all] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-spectrum-saturation-example.dir/build.make:109: examples/wireless/CMakeFiles/wifi-spectrum-saturation-example.dir/depend] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-spatial-reuse.dir/build.make:109: examples/wireless/CMakeFiles/wifi-spatial-reuse.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23644: examples/wireless/CMakeFiles/wifi-tcp.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23603: examples/wireless/CMakeFiles/wifi-spectrum-saturation-example.dir/all] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-vht-network.dir/build.make:109: examples/wireless/CMakeFiles/wifi-vht-network.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23480: examples/wireless/CMakeFiles/wifi-spatial-reuse.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23767: examples/wireless/CMakeFiles/wifi-vht-network.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23686: examples/wireless/CMakeFiles/wifi-timing-attributes.dir/all] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-simple-infra.dir/build.make:109: examples/wireless/CMakeFiles/wifi-simple-infra.dir/depend] Interrupção
+gmake[2]: *** [examples/wireless/CMakeFiles/wifi-txop-aggregation.dir/build.make:109: examples/wireless/CMakeFiles/wifi-txop-aggregation.dir/depend] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23726: examples/wireless/CMakeFiles/wifi-txop-aggregation.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:23358: examples/wireless/CMakeFiles/wifi-simple-infra.dir/all] Interrupção
+gmake: *** [Makefile:136: all] Interrupção
+Traceback (most recent call last):
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 2163, in <module>
+    main()
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 2125, in main
+    build_step(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 1354, in build_step
+    cmake_build(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/./ns3", line 1188, in cmake_build
+    ret = subprocess.run(
+          ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1201, in communicate
+    self.wait()
+  File "/usr/lib/python3.12/subprocess.py", line 1264, in wait
+    return self._wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2053, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2011, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
