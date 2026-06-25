@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DURACAO = 30
 TLS_PAYLOAD = 3000
-CONN_PER_CLIENT = 30
+CONN_PER_CLIENT = 1   # ⚠ QUIC: manter =1 (bug 0-RTT no ns-3.47)
 CONN_INTERVAL = 0.5
 CONN_TIMEOUT = 15
 UDP_BG_RATE_FRAC = 0.3
@@ -168,7 +168,14 @@ def main():
     # Detecta número de CPUs
     n_cpus = os.cpu_count() or 4
     n_parallel = args.parallel if args.parallel > 0 else max(1, n_cpus - 1)
-    MEM_WARN = 0.5  # GB estimados por simulação paralela
+    MEM_WARN = 0.5
+
+    # Validação: QUIC + connPerClient > 1 crasha no ns-3.47
+    if CONN_PER_CLIENT > 1:
+        print(f"⚠  CONN_PER_CLIENT={CONN_PER_CLIENT} com QUIC causa crash "
+              "(bug 0-RTT no módulo QUIC do ns-3.47).")
+        print("   Experimentos QUIC usarão 1 conexão por cliente.")
+        print("   Para mais amostras, aumente --numQuicClients.\n")  # GB estimados por simulação paralela
     if n_parallel * MEM_WARN > 8:
         print(f"⚠  {n_parallel} paralelos ~{n_parallel * MEM_WARN:.0f} GB de RAM (est.)")
 

@@ -1,0 +1,50 @@
+CMake Error at CMakeLists.txt:11 (file):
+  file STRINGS file
+  "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.47/VERSION" cannot
+  be read.
+
+
+'git' 'tag' '--list' 'ns-3.*' '--sort' '-version:refname'
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+CMake Error at contrib/netsimulyzer/CMakeLists.txt:72 (list):
+  list GET given empty list
+
+
+CMake Warning at build-support/3rd-party/colored-messages.cmake:84 (_message):
+  [33mnr MIMO features require the eigen3 library, but it was not found[0m
+Call Stack (most recent call first):
+  contrib/nr/CMakeLists.txt:14 (message)
+
+
+CMake Warning at build-support/3rd-party/colored-messages.cmake:84 (_message):
+  [33mlena-lte-comparison, cttc-nr-3gpp-calibration and
+  cttc-realistic-beamforming require sqlite[0m
+Call Stack (most recent call first):
+  contrib/nr/examples/CMakeLists.txt:79 (message)
+
+
+CMake Warning at build-support/3rd-party/colored-messages.cmake:84 (_message):
+  [33mcttc-nr-3gpp-calibration and cttc-3gpp-indoor-calibration require
+  sqlite and eigen[0m
+Call Stack (most recent call first):
+  contrib/nr/examples/CMakeLists.txt:137 (message)
+
+
+CMake Error at /usr/share/cmake-3.28/Modules/GenerateExportHeader.cmake:406 (configure_file):
+  No such file or directory
+Call Stack (most recent call first):
+  /usr/share/cmake-3.28/Modules/GenerateExportHeader.cmake:422 (_do_generate_export_header)
+  build-support/custom-modules/ns3-module-macros.cmake:192 (generate_export_header)
+  src/applications/CMakeLists.txt:1 (build_lib)
+
+
+CMake Error at build-support/3rd-party/colored-messages.cmake:82 (_message):
+  [1;31mNo VERSION specified for WRITE_BASIC_CONFIG_VERSION_FILE()[0m
+Call Stack (most recent call first):
+  /usr/share/cmake-3.28/Modules/WriteBasicConfigVersionFile.cmake:43 (message)
+  /usr/share/cmake-3.28/Modules/CMakePackageConfigHelpers.cmake:239 (write_basic_config_version_file)
+  build-support/custom-modules/ns3-cmake-package.cmake:148 (write_basic_package_version_file)
+  CMakeLists.txt:202 (ns3_cmake_package)
+
+

@@ -1,0 +1,7 @@
+=== RESUMO ===
+
+Linhas: 234
+Protocolos: {'TCP', 'QUIC'}
+
+TCP/TLS: n=82  sucesso=99.9%  lat=1134.7ms
+QUIC: n=152  sucesso=46.4%  lat=62.9ms

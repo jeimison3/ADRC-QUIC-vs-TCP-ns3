@@ -1,0 +1,29 @@
+gmake[3]: *** [src/network/CMakeFiles/network.dir/build.make:1228: src/network/CMakeFiles/network.dir/depend] Interrupção
+gmake[2]: *** [CMakeFiles/Makefile2:9559: src/network/CMakeFiles/network.dir/all] Interrupção
+gmake[1]: *** [CMakeFiles/Makefile2:16945: scratch/CMakeFiles/scratch_connection-success.dir/rule] Interrupção
+gmake: *** [Makefile:5760: scratch_connection-success] Interrupção
+Traceback (most recent call last):
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.48/./ns3", line 2232, in <module>
+    main()
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.48/./ns3", line 2195, in main
+    build_step(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.48/./ns3", line 1441, in build_step
+    cmake_build(
+  File "/home/jeimison/Documentos/Tools/ns-allinone-3.47/ns-3.48/./ns3", line 1225, in cmake_build
+    ret = subprocess.run(
+          ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1201, in communicate
+    self.wait()
+  File "/usr/lib/python3.12/subprocess.py", line 1264, in wait
+    return self._wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2053, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2011, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

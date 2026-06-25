@@ -86,7 +86,7 @@ python3 scratch/orchestrator.py --from-idx=50
 |---|---|---|
 | `DURACAO` | 30 | Segundos de simulação por experimento |
 | `TLS_PAYLOAD` | 3000 | Bytes no payload TLS pós-handshake (0 = desliga fase TLS) |
-| `CONN_PER_CLIENT` | 1 | Conexões por cliente (1 = curta, como recomendado) |
+| `CONN_PER_CLIENT` | 1 | Conexões por cliente. ⚠ **QUIC: manter =1** (ver limitação abaixo) |
 | `CONN_INTERVAL` | 0.5 | Intervalo entre conexões (s) |
 | `CONN_TIMEOUT` | 15 | Timeout de handshake (s) |
 | `UDP_BG_RATE_FRAC` | 0.3 | Fração da banda total usada por tráfego de fundo |
@@ -96,6 +96,22 @@ python3 scratch/orchestrator.py --from-idx=50
 | `WIFI_STANDARD` | 80211ac | Padrão WiFi |
 | `WIFI_RATE` | VhtMcs7 | Taxa PHY WiFi |
 | `WIFI_DISTANCE` | 5 | Distância AP → STAs (metros). Menor = sinal mais forte |
+
+## ⚠ Limitação Conhecida: QUIC + múltiplas conexões por nó
+
+O módulo QUIC do **ns-3.47** possui um bug: após a primeira conexão bem-sucedida de
+um nó, ele tenta usar **0-RTT** (retomada de sessão TLS) na conexão seguinte.
+A implementação do 0-RTT no ns-3.47 é **não funcional**, causando crash com a
+mensagem `"0RTT Handshake requested with wrong Initial Version"`.
+
+**Consequência:** `CONN_PER_CLIENT` deve ser **1** para QUIC.
+Não use `connPerClient > 1` com `--enableQuic=1`.
+
+**Alternativa para mais amostras:** aumente `numQuicClients` no orquestrador.
+Cada nó adicional fará 1 handshake independente. Exemplo:
+`numQuicClients=10` = 10 handshakes QUIC, cada um de um nó diferente.
+
+**TCP não tem essa limitação** — pode usar `connPerClient` qualquer.
 
 ## O que cada parâmetro significa
 
