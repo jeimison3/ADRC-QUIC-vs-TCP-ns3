@@ -1,0 +1,11 @@
+NS_ASSERT failed, cond="m_address <= m_max", msg="Ipv4AddressHelper::NewAddress(): Address overflow", +0.000000000s -1 file=/opt/ns-3.48/src/internet/helper/ipv4-address-helper.cc, line=98
+NS_FATAL, terminating
+   0# ns3::Ipv4AddressHelper::NewAddress() at /opt/ns-3.48/src/internet/helper/ipv4-address-helper.cc:98
+   1# ns3::Ipv4AddressHelper::Assign(ns3::NetDeviceContainer const&) at /opt/ns-3.48/src/internet/helper/ipv4-address-helper.cc:149
+   2# main at /opt/ns-3.48/scratch/connection-success.cc:951
+   3# __libc_start_call_main at ../sysdeps/nptl/libc_start_call_main.h:58
+   4# __libc_start_main_impl at ../csu/libc-start.c:360
+   5# _start at :0
+   6# 
+
+terminate called without an active exception

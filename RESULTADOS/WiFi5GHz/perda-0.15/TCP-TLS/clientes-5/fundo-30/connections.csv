@@ -1,0 +1,6 @@
+Protocolo,Inicio,LatenciaMs,Sucesso,MotivoFalha,Is0RTT
+TCP,1,-1,0,Timeout,0
+TCP,1.2,5569.17,1,Pending,0
+TCP,1.1,3222.51,1,Pending,0
+TCP,1.3,4179.95,1,Pending,0
+TCP,1.4,4013.44,1,Pending,0

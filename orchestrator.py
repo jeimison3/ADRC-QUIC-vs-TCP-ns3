@@ -30,10 +30,10 @@ DURACAO = 30
 TLS_PAYLOAD = 3000
 CONN_PER_CLIENT = 1   # ⚠ QUIC: manter =1 (bug 0-RTT no ns-3.47)
 CONN_INTERVAL = 0.5
-CONN_TIMEOUT = 15
-BG_TOTAL_RATE = "500Mbps"   # largura total de fundo (dividida entre numBgNodes)
-ACCESS_BW = "100Mbps"      # enlace de acesso dos clientes (Ethernet)
-BOTTLENECK_BW = "1Gbps"    # gargalo
+CONN_TIMEOUT = 5
+BG_TOTAL_RATE = "50Mbps"   # largura total de fundo (dividida entre numBgNodes)
+ACCESS_BW = "10Mbps"      # enlace de acesso dos clientes (Ethernet)
+BOTTLENECK_BW = "100Mbps"    # gargalo
 SERV_DELAY = "5ms"
 ACCESS_DELAY = "2ms"
 GARGALO_DELAY = "20ms"
@@ -119,7 +119,7 @@ def executa_experimento(comando: list[str], output_dir: str):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=DURACAO * 4 + 30,
+            # timeout=DURACAO * 4 + 30,
         )
         if result.returncode != 0:
             with open(os.path.join(output_dir, "ERROR.log"), "w") as f:

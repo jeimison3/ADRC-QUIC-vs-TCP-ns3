@@ -1,0 +1,8 @@
+Protocolo,Inicio,LatenciaMs,Sucesso,MotivoFalha,Is0RTT
+QUIC,1.57006,84.2897,1,,0
+QUIC,2.05964,58.5903,1,,0
+QUIC,2.5656,58.1114,1,,0
+QUIC,10.1804,-1,0,Timeout,0
+QUIC,11.5533,-1,0,Timeout,0
+QUIC,24.775,-1,0,Timeout,0
+QUIC,24.6494,-1,0,Timeout,0
